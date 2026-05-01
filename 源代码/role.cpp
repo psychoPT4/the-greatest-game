@@ -1,144 +1,141 @@
 #include "../头文件/Role.h"
 #include <iostream>
-#include <cmath> // 用于 round 等数学运算
+#include <cmath>
 
-// ==========================================
-// 1. 基类 Role 实现
-// ==========================================
-// 构造函数：严格对齐头文件中的 7 个参数
-Role::Role(std::string n, int startX, int startY, int maxHp, int dmg, float rx, float ry)
-    : name(n), x(startX), y(startY), hp(maxHp), maxHp(maxHp), baseDamage(dmg), realX(rx), realY(ry) {}
+extern std::string combatLog; 
 
-void Role::takeDamage(int amount) {
+Role::Role(std::string n, int startX, int startY, int maxHp, int dmg)
+    : name(n), x(startX), y(startY), hp(maxHp), maxHp(maxHp), baseDamage(dmg), 
+      alive(true), flickerTimer(0), realX((float)startX), realY((float)startY) {}
+
+void Role::takeDamage(int amount, int attackerX, const Map& gameMap) {
+    if (!alive) return;
     hp -= amount;
-    if (hp < 0) hp = 0;
+    flickerTimer = 5; 
+    int kDir = (x > attackerX) ? 1 : -1;
+    if (gameMap.getTileAt(x + kDir, y) != TileType::Wall) {
+        x += kDir; realX = (float)x;
+    }
+    if (hp <= 0) { hp = 0; alive = false; }
 }
 
-// ==========================================
-// 2. 派生类 Player 实现
-// ==========================================
-// 骑士构造：初始化时将 int 坐标同步给影子坐标 float
+// ---------------------------------------------------------
+// 骑士 (Player) - 独立坐标轴判定版
+// ---------------------------------------------------------
 Player::Player(int startX, int startY)
-    : Role("骑士", startX, startY, 100, 15, (float)startX, (float)startY),
-      level(1), currentExp(0), expToNextLevel(100),
-      specialDamage(30), mana(100),
-      velocityY(0.0f), gravity(0.15f), jumpForce(-1.0f), isGrounded(false) {}
+    : Role("骑士", startX, startY, 100, 25), level(1), currentExp(0), expToNextLevel(100), 
+      mana(100), facingDirection(1), jumpCount(0), 
+      velocityY(0.0f), 
+      gravity(0.10f),   // 降低重力，让下落更平滑
+      jumpForce(-0.8f), // 增强初速度，跳跃更有力
+      isGrounded(false) {}
 
 void Player::move(int dx, int dy, const Map& gameMap) {
-    int targetX = x + dx;
-    int targetY = y + dy;
-    TileType targetTile = gameMap.getTileAt(targetX, targetY);
+    if (!alive) return;
+    if (dx != 0) facingDirection = dx;
 
-    // 水平碰撞检测
-    if (targetTile == TileType::Empty || targetTile == TileType::Platform) {
+    // 【独立 X 轴判定】：不考虑 y，只要侧面没墙就能走
+    int targetX = x + dx;
+    if (gameMap.getTileAt(targetX, y) != TileType::Wall) {
         x = targetX;
-        realX = (float)x; // 同步影子坐标
+        realX = (float)x;
     }
 }
 
 void Player::jump() {
-    if (isGrounded) {
-        velocityY = jumpForce;
-        isGrounded = false;
+    // 【高响应】：直接修改速度，不等待逻辑帧
+    if (isGrounded) { 
+        velocityY = jumpForce; 
+        isGrounded = false; 
+        jumpCount = 1; 
+    } else if (jumpCount < 2) { 
+        velocityY = jumpForce * 0.85f; 
+        jumpCount = 2; 
+        combatLog = "二段跳！";
     }
 }
 
 void Player::update(const Map& gameMap) {
-    // A. 悬崖检测：站在边缘时如果脚下变空，立即转为坠落状态
-    if (isGrounded) {
-        if (gameMap.getTileAt(x, y + 1) == TileType::Empty) {
-            isGrounded = false;
-        }
-    }
+    if (!alive) return;
+    if (flickerTimer > 0) flickerTimer--;
 
-    // B. 重力计算：仅在空中时累加
-    if (!isGrounded) {
-        velocityY += gravity;
-        if (velocityY > 2.0f) velocityY = 2.0f; // 终端速度限制，防止穿模
-    }
-
-    // C. 核心修正：使用影子坐标进行高精度累加，消灭顶点停顿感
-    realY += velocityY;
-    
-    // 渲染坐标 y 采用影子坐标的四舍五入，确保平滑
-    int nextY = static_cast<int>(round(realY));
-
-    // D. 垂直碰撞检测
-if (velocityY > 0) { // 下落中
-    TileType landTile = gameMap.getTileAt(x, nextY);
-    
-    // 【核心修复点】：增加 (y < nextY) 判断
-    // 只有当你现在的高度(y)比目标格(nextY)高，才能算是“从上往下掉在台子上”
-    if ((landTile == TileType::Wall || landTile == TileType::Platform) && y < nextY) {
-        y = nextY - 1;       // 站在方块上方
-        realY = (float)y;    
-        velocityY = 0.0f;
-        isGrounded = true;
-    } 
-    // 如果你在平台下方或者和平台等高，下落时不能踩上去，只能继续掉落（或者被判定为撞墙）
-    else {
-        y = nextY;
+    // 1. 落地预检
+    TileType under = gameMap.getTileAt(x, y + 1);
+    if (isGrounded && under != TileType::Wall && under != TileType::Platform) {
         isGrounded = false;
     }
-} 
-    else if (velocityY < 0) { // 跳跃中
-        TileType hitTile = gameMap.getTileAt(x, nextY);
-        if (hitTile == TileType::Wall) {
-            y = nextY + 1;       // 撞到天花板弹回
-            realY = (float)y;
-            velocityY = 0.0f;
+
+    // 2. 应用重力
+    if (!isGrounded) {
+        velocityY += gravity;
+        if (velocityY > 1.5f) velocityY = 1.5f; 
+    }
+    
+    // 3. 【独立 Y 轴判定】：使用路径扫描防止钻地
+    realY += velocityY;
+    int nextY = (int)round(realY);
+
+    if (velocityY > 0) { // 下落
+        bool hit = false;
+        for (int i = y + 1; i <= nextY; ++i) {
+            TileType t = gameMap.getTileAt(x, i);
+            if ((t == TileType::Wall || t == TileType::Platform) && y < i) {
+                y = i - 1; 
+                realY = (float)y; 
+                velocityY = 0.0f; 
+                isGrounded = true; 
+                jumpCount = 0; 
+                hit = true;
+                break;
+            }
+        }
+        if (!hit) y = (nextY < 15) ? nextY : 14;
+    } 
+    else if (velocityY < 0) { // 上升
+        TileType head = gameMap.getTileAt(x, nextY);
+        if (head == TileType::Wall) {
+            velocityY = 0.1f; realY = (float)y; 
         } else {
-            y = nextY;
-            isGrounded = false;
+            y = (nextY >= 0) ? nextY : 0;
         }
     }
 }
 
-// 战斗与成长逻辑
-void Player::gainExp(int amount) {
-    currentExp += amount;
-    if (currentExp >= expToNextLevel) levelUp();
-}
-
-void Player::levelUp() {
-    level++;
-    currentExp = 0;
-    expToNextLevel *= 1.5;
-    maxHp += 20;
-    hp = maxHp;
-    baseDamage += 5;
-}
-
-void Player::normalAttack(Role& target) {
-    target.takeDamage(baseDamage);
-}
-
-void Player::specialAttack(Role& target) {
-    if (mana >= 30) {
-        mana -= 30;
-        target.takeDamage(specialDamage);
+void Player::attack(Role& target, const Map& gameMap) {
+    if (!target.isAlive()) return;
+    if (abs(target.getX() - x) <= 2 && (target.getX() - x) * facingDirection >= 0) {
+        target.takeDamage(baseDamage, x, gameMap);
+        combatLog = "你发起了攻击！";
     }
 }
 
-// ==========================================
-// 3. 派生类 Enemy 实现
-// ==========================================
+// ---------------------------------------------------------
+// 爬虫 (Enemy) - 物理统一版
+// ---------------------------------------------------------
 Enemy::Enemy(int startX, int startY, int expGive)
-    : Role("爬虫", startX, startY, 30, 8, (float)startX, (float)startY),
-      moveDirection(1), expReward(expGive) {}
+    : Role("爬虫", startX, startY, 40, 12), moveDirection(1), expReward(expGive), attackCooldown(0) {}
 
-void Enemy::update(const Map& gameMap) {
-    // 基础 AI：每隔几帧移动一次，防止在 20FPS 下速度过快
-    static int frame = 0;
-    if (++frame % 8 == 0) {
-        int nextX = x + moveDirection;
-        // 碰到墙壁或悬崖边缘就转身
-        if (gameMap.getTileAt(nextX, y) == TileType::Wall || 
-            gameMap.getTileAt(nextX, y + 1) == TileType::Empty) {
-            moveDirection *= -1;
-        } else {
-            x = nextX;
-            realX = (float)x;
+void Enemy::update(const Map& gameMap, Player& player) {
+    if (!alive) return;
+    if (flickerTimer > 0) flickerTimer--;
+    if (attackCooldown > 0) attackCooldown--;
+
+    // 怪物重力检测
+    if (gameMap.getTileAt(x, y + 1) == TileType::Empty) {
+        y++; realY = (float)y;
+    } else {
+        static int f = 0;
+        if (++f % 10 == 0) {
+            int nx = x + moveDirection;
+            if (gameMap.getTileAt(nx, y) == TileType::Wall || gameMap.getTileAt(nx, y + 1) == TileType::Empty) {
+                moveDirection *= -1;
+            } else { x = nx; }
         }
+    }
+
+    if (abs(player.getX() - x) <= 1 && abs(player.getY() - y) <= 1 && attackCooldown <= 0) {
+        player.takeDamage(baseDamage, x, gameMap);
+        attackCooldown = 20;
+        combatLog = "你被碰撞了！HP -12";
     }
 }

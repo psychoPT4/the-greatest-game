@@ -1,74 +1,74 @@
 #include <iostream>
-#include <vector>
 #include <string>
-#include <conio.h>   
-#include <windows.h> 
+#include <conio.h>
+#include <windows.h>
 #include "../头文件/map.h"
 #include "../头文件/Role.h"
 
 using namespace std;
 
-// 全局渲染函数：放弃坐标控制，改用极速全清
-void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy) {
-    // 强制每帧彻底清空控制台历史，防止堆叠
-    system("cls"); 
-    
-    // 快速拼接画面到缓冲区
-    string output = "";
-    output += "=== 《Fulfilling Knight》 暴力渲染模式 ===\n";
-    output += "操作: [A][D]移动 [K]跳跃 [Q]退出\n";
-    output += "坐标: (" + to_string(player.getX()) + ", " + to_string(player.getY()) + ")\n";
-    output += "------------------------------------------\n";
+string combatLog = "探索开始...";
 
-    for (int y = 0; y < 15; ++y) {       
-        for (int x = 0; x < 30; ++x) {   
-            if (player.getX() == x && player.getY() == y) output += "@ "; 
-            else if (enemy.getX() == x && enemy.getY() == y) output += "E "; 
+void resetCursor() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    COORD pos = {0, 0};
+    SetConsoleCursorPosition(hOut, pos);
+}
+
+void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy) {
+    resetCursor();
+    cout << "=== 《Fulfilling Knight》 物理重构版 ===                     \n";
+    cout << "操作: [A][D]横移 [K]跳跃 [J]攻击 [Q]退出                     \n";
+    cout << "状态: HP [" << player.getHp() << "/" << player.getMaxHp() << "] | 坐标: (" << player.getX() << "," << player.getY() << ")          \n";
+    cout << "日志: " << combatLog << "                                           \n";
+    cout << "-------------------------------------------------------------\n";
+
+    for (int y = 0; y < 15; ++y) {
+        for (int x = 0; x < 30; ++x) {
+            if (player.getX() == x && player.getY() == y) cout << (player.isFlickering() ? "* " : "@ ");
+            else if (enemy.isAlive() && enemy.getX() == x && enemy.getY() == y) cout << (enemy.isFlickering() ? "X " : "E ");
             else {
                 TileType tile = gameMap.getTileAt(x, y);
-                if (tile == TileType::Wall) output += "[]";
-                else if (tile == TileType::Platform) output += "==";
-                else output += "  ";
+                if (tile == TileType::Wall) cout << "[]";
+                else if (tile == TileType::Platform) cout << "==";
+                else cout << "  ";
             }
         }
-        output += "\n";
+        if (y < 14) cout << '\n';
     }
-    
-    // 一口气喷射出所有字符，减少 system("cls") 带来的闪烁感
-    cout << output << flush; 
+    cout << flush;
 }
 
 int main() {
-    // 你的性能外挂，这次它将配合 system("cls") 发挥奇效
-    ios::sync_with_stdio(false);
-    cin.tie(0);
+    system("chcp 65001");
+    system("cls");
     
-    system("chcp 65001"); // 解决乱码
+    Map gameMap(30, 15);
+    if (!gameMap.loadFromCSV("map1.csv")) return -1;
 
-    Map gameMap(30, 15); 
-    Player player(5, 2);     
-    Enemy enemy(15, 10, 50); 
-
-    if (!gameMap.loadFromCSV("map1.csv") && !gameMap.loadFromCSV("源代码/map1.csv")) {
-        cout << "Error: Map file not found!" << endl;
-        return -1;
-    }
+    // 出生点：放在中间平台上方
+    Player player(15, 5);
+    Enemy enemy(25, 12, 50);
 
     while (true) {
+        // 先处理输入：确保按键瞬间逻辑生效
         if (_kbhit()) {
-            char ch = _getch(); 
-            if (ch == 'q' || ch == 'Q') break;
-            if (ch == 'a' || ch == 'A') player.move(-1, 0, gameMap);
-            if (ch == 'd' || ch == 'D') player.move(1, 0, gameMap);
-            if (ch == 'k' || ch == 'K') player.jump();
+            char ch = _getch();
+            if (ch == 'q') break;
+            if (ch == 'a') player.move(-1, 0, gameMap);
+            if (ch == 'd') player.move(1, 0, gameMap);
+            if (ch == 'k') player.jump();
+            if (ch == 'j') player.attack(enemy, gameMap);
         }
 
+        // 随后进行物理模拟
         player.update(gameMap);
-        enemy.update(gameMap);
+        enemy.update(gameMap, player);
+
+        // 最后渲染
         renderGame(gameMap, player, enemy);
 
-        Sleep(60); // 稍微调慢一点帧率，给系统清屏留出时间
+        Sleep(50); // 维持 20FPS 的稳定感
     }
-
     return 0;
 }
