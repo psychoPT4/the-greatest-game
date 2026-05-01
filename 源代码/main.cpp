@@ -17,9 +17,10 @@ void resetCursor() {
 
 void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy) {
     resetCursor();
+    // 精简后的 UI，去掉了没用的坐标显示
     cout << "=== 《Fulfilling Knight》 物理重构版 ===                     \n";
-    cout << "操作: [A][D]横移 [K]跳跃 [J]攻击 [Q]退出                     \n";
-    cout << "状态: HP [" << player.getHp() << "/" << player.getMaxHp() << "] | 坐标: (" << player.getX() << "," << player.getY() << ")          \n";
+    cout << "操作: [A][D]左右 [K]跳跃 [J]攻击 [Q]退出                     \n";
+    cout << "状态: HP [" << player.getHp() << "/" << player.getMaxHp() << "]                                     \n";
     cout << "日志: " << combatLog << "                                           \n";
     cout << "-------------------------------------------------------------\n";
 
@@ -46,12 +47,10 @@ int main() {
     Map gameMap(30, 15);
     if (!gameMap.loadFromCSV("map1.csv")) return -1;
 
-    // 出生点：放在中间平台上方
-    Player player(15, 5);
+    Player player(15, 12); 
     Enemy enemy(25, 12, 50);
 
     while (true) {
-        // 先处理输入：确保按键瞬间逻辑生效
         if (_kbhit()) {
             char ch = _getch();
             if (ch == 'q') break;
@@ -61,14 +60,12 @@ int main() {
             if (ch == 'j') player.attack(enemy, gameMap);
         }
 
-        // 随后进行物理模拟
         player.update(gameMap);
         enemy.update(gameMap, player);
-
-        // 最后渲染
         renderGame(gameMap, player, enemy);
 
-        Sleep(50); // 维持 20FPS 的稳定感
+        // 进一步降低 Sleep，提高响应速度，体感更流畅
+        Sleep(25); 
     }
     return 0;
 }

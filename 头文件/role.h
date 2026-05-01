@@ -42,8 +42,8 @@ private:
 public:
     Player(int startX, int startY);
     void update(const Map& gameMap) override;
-    void move(int dx, int dy, const Map& gameMap); // 独立 X 轴处理
-    void jump(); // 瞬间改变初速度
+    void move(int dx, int dy, const Map& gameMap); 
+    void jump(); 
     void attack(Role& target, const Map& gameMap);
 };
 
