@@ -20,7 +20,8 @@ public:
     Role(std::string n, int startX, int startY, int maxHp, int dmg);
     virtual ~Role() {}
 
-    virtual void update(const Map& gameMap) = 0;
+    // 更新函数增加 deltaTime 参数
+    virtual void update(const Map& gameMap, float dt) = 0;
     virtual void takeDamage(int amount, int attackerX, const Map& gameMap); 
     
     bool isAlive() const { return alive; }
@@ -36,14 +37,22 @@ class Player : public Role {
 private:
     int level, currentExp, expToNextLevel;
     int mana, facingDirection, jumpCount;
-    float velocityY, gravity, jumpForce;
     bool isGrounded;
+    
+    // 【新增动力学参数】
+    float velocityX, velocityY;
+    float maxRunSpeed, runAccel, groundFriction, airDrag;
+    float gravity, jumpForce, maxFallSpeed;
+    
+    int moveIntent; // 当前玩家的输入意图 (-1, 0, 1)
 
 public:
     Player(int startX, int startY);
-    void update(const Map& gameMap) override;
-    void move(int dx, int dy, const Map& gameMap); 
-    void jump(); 
+    void update(const Map& gameMap, float dt) override;
+    
+    // 取代原来的 move 和 jump，改为状态输入
+    void setMoveIntent(int dir); 
+    void processJump(bool jumpPressed, bool jumpHeld); 
     void attack(Role& target, const Map& gameMap);
 };
 
@@ -53,8 +62,8 @@ private:
 
 public:
     Enemy(int startX, int startY, int expGive);
-    void update(const Map& gameMap, Player& player); 
-    void update(const Map& gameMap) override {} 
+    void update(const Map& gameMap, Player& player, float dt); 
+    void update(const Map& gameMap, float dt) override {} 
 };
 
 #endif

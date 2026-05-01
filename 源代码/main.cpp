@@ -1,13 +1,16 @@
 #include <iostream>
 #include <string>
-#include <conio.h>
 #include <windows.h>
+#include <chrono> // 引入高精度时钟
 #include "../头文件/map.h"
 #include "../头文件/Role.h"
 
 using namespace std;
 
-string combatLog = "探索开始...";
+string combatLog = "系统初始化...";
+
+// 宏：检查按键是否被按下
+#define KEY_PRESSED(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 1 : 0)
 
 void resetCursor() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -17,9 +20,8 @@ void resetCursor() {
 
 void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy) {
     resetCursor();
-    // 精简后的 UI，去掉了没用的坐标显示
-    cout << "=== 《Fulfilling Knight》 物理重构版 ===                     \n";
-    cout << "操作: [A][D]左右 [K]跳跃 [J]攻击 [Q]退出                     \n";
+    cout << "=== 《Fulfilling Knight》 纯正动力学引擎 ===                 \n";
+    cout << "操作: [A][D]长按横移 [K]长按大跳/轻点小跳 [J]攻击 [Q]退出    \n";
     cout << "状态: HP [" << player.getHp() << "/" << player.getMaxHp() << "]                                     \n";
     cout << "日志: " << combatLog << "                                           \n";
     cout << "-------------------------------------------------------------\n";
@@ -50,22 +52,48 @@ int main() {
     Player player(15, 12); 
     Enemy enemy(25, 12, 50);
 
+    // 记录上一帧的时间戳
+    auto lastTime = chrono::high_resolution_clock::now();
+    bool lastJumpState = false; 
+
     while (true) {
-        if (_kbhit()) {
-            char ch = _getch();
-            if (ch == 'q') break;
-            if (ch == 'a') player.move(-1, 0, gameMap);
-            if (ch == 'd') player.move(1, 0, gameMap);
-            if (ch == 'k') player.jump();
-            if (ch == 'j') player.attack(enemy, gameMap);
+        if (KEY_PRESSED('Q')) break;
+
+        // 计算物理 Delta Time
+        auto currentTime = chrono::high_resolution_clock::now();
+        float dt = chrono::duration<float>(currentTime - lastTime).count();
+        lastTime = currentTime;
+
+        // 钳制 dt 防止拖动窗口导致的物理爆炸 (最高限制为 0.05 秒)
+        if (dt > 0.05f) dt = 0.05f;
+
+        // --- 获取输入状态 ---
+        int moveDir = 0;
+        if (KEY_PRESSED('A')) moveDir -= 1;
+        if (KEY_PRESSED('D')) moveDir += 1;
+        player.setMoveIntent(moveDir);
+
+        bool jumpHeld = KEY_PRESSED('K');
+        bool jumpPressed = jumpHeld && !lastJumpState; // 提取跳跃按下的瞬间
+        lastJumpState = jumpHeld;
+        
+        player.processJump(jumpPressed, jumpHeld);
+
+        // 为了防止控制台狂刷日志，攻击键加个简单的冷却阻断
+        static int attackCd = 0;
+        if (attackCd > 0) attackCd--;
+        if (KEY_PRESSED('J') && attackCd <= 0) {
+            player.attack(enemy, gameMap);
+            attackCd = 10;
         }
 
-        player.update(gameMap);
-        enemy.update(gameMap, player);
+        // --- 核心物理与逻辑更新 ---
+        player.update(gameMap, dt);
+        enemy.update(gameMap, player, dt);
+        
         renderGame(gameMap, player, enemy);
 
-        // 进一步降低 Sleep，提高响应速度，体感更流畅
-        Sleep(25); 
+        Sleep(15); // 让出 CPU 资源，保持极限 60+ FPS 的采样率
     }
     return 0;
 }
