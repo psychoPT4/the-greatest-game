@@ -13,11 +13,12 @@ protected:
     int y;
     int hp;
     int maxHp;         // 最大血量上限
-    int baseDamage;    // 基础伤害 (主角的普攻 / 怪物的触碰伤害)
+    int baseDamage;// 基础伤害 (主角的普攻 / 怪物的触碰伤害)
+    float realX, realY;    
     std::string name;
 
 public:
-    Role(std::string n, int startX, int startY, int maxHp, int dmg);
+    Role(std::string n, int startX, int startY, int maxHp, int dmg,float rx,float ry);
     virtual ~Role() {}
 
     // 核心规定：所有实体在更新逻辑时，都必须能读取地图数据！
