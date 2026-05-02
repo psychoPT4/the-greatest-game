@@ -10,16 +10,27 @@ Role::Role(std::string n, int startX, int startY, int maxHp, int dmg)
       alive(true), flickerTimer(0), realX((float)startX), realY((float)startY) {}
 
 void Role::takeDamage(int amount, int attackerX, const Map& gameMap) {
-    if (!alive) return;
+    // 【核心修复】：如果已经死了，或者正处于“无敌闪烁”状态，则免疫此次伤害
+    if (!alive || flickerTimer > 0) return; 
+    
     hp -= amount;
-    flickerTimer = 5; 
+    
+    // 设置无敌帧时长：60 帧（大约 1 到 1.5 秒无敌时间，配合闪烁效果）
+    flickerTimer = 60; 
+    
+    // 击退逻辑 (后退 2 格)
     int kDir = (x > attackerX) ? 1 : -1;
-    // 击退依然使用相对位移
     float targetX = realX + kDir * 2.0f; 
     if (gameMap.getTileAt((int)round(targetX), y) != TileType::Wall) {
-        realX = targetX; x = (int)round(realX);
+        realX = targetX; 
+        x = (int)round(realX);
     }
-    if (hp <= 0) { hp = 0; alive = false; }
+    
+    if (hp <= 0) { 
+        hp = 0; 
+        alive = false; 
+        combatLog = name + " 已倒下！"; 
+    }
 }
 
 // ==========================================
