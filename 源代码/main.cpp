@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <vector>
 #include <windows.h>
 #include <chrono>
 #include "../头文件/map.h"
@@ -16,25 +17,51 @@ void resetCursor() {
     SetConsoleCursorPosition(hOut, pos);
 }
 
-// 渲染函数增加 currentLevel 参数，并在地图上绘制终点 'O'
-void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy, int currentLevel, int goalX, int goalY) {
+void renderGame(const Map& gameMap, const Player& player, const vector<Enemy>& enemies, int currentLevel, SpawnPoint goal) {
     resetCursor();
-    cout << "=== 《Fulfilling Knight》 关卡模式 | 当前层数: " << currentLevel << " ===      \n";
-    cout << "操作: [A][D]横移 [K]跳跃 [J]攻击 [Q]退出                     \n";
+    cout << "=== 《Fulfilling Knight》 纯数据驱动版 ===                 \n";
+    cout << "操作: [A][D]横移 [K]跳跃 [J]平砍 [S]+[J]空中下劈             \n";
     cout << "状态: HP [" << player.getHp() << "/" << player.getMaxHp() << "]                                     \n";
     cout << "日志: " << combatLog << "                                           \n";
     cout << "-------------------------------------------------------------\n";
 
-    for (int y = 0; y < 20;++y) {
+    for (int y = 0; y < 20; ++y) {
         for (int x = 0; x < 50; ++x) {
-            if (player.getX() == x && player.getY() == y) cout << (player.isFlickering() ? "* " : "@ ");
-            else if (enemy.isAlive() && enemy.getX() == x && enemy.getY() == y) cout << (enemy.isFlickering() ? "X " : "E ");
-            else if (x == goalX && y == goalY) cout << "O "; // 绘制传送门终点
+            // 绘制骑士
+            if (player.getX() == x && player.getY() == y) {
+                cout << (player.isFlickering() ? "* " : "@ ");
+                continue;
+            }
+            
+            // 绘制怪物
+            bool hasEnemy = false;
+            bool enemyFlicker = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.getX() == x && e.getY() == y) {
+                    hasEnemy = true;
+                    enemyFlicker = e.isFlickering();
+                    break;
+                }
+            }
+            
+            if (hasEnemy) {
+                cout << (enemyFlicker ? "X " : "E ");
+            } 
+            // 绘制终点门
+            else if (x == goal.x && y == goal.y) {
+                cout << "O "; 
+            } 
+            // 绘制地形
             else {
                 TileType tile = gameMap.getTileAt(x, y);
-                if (tile == TileType::Wall) cout << "[]";
-                else if (tile == TileType::Platform) cout << "==";
-                else cout << "  ";
+                switch (tile) {
+                    case TileType::Wall:       cout << "[]"; break;
+                    case TileType::Platform:   cout << "=="; break;
+                    case TileType::SpikeUp:    cout << "/\\"; break;
+                    case TileType::Void:       cout << "~~"; break;
+                    case TileType::Empty:      cout << "  "; break;
+                    default:                   cout << "  "; break;
+                }
             }
         }
         if (y < 19) cout << '\n';
@@ -44,53 +71,50 @@ void renderGame(const Map& gameMap, const Player& player, const Enemy& enemy, in
 
 int main() {
     system("chcp 65001");
+    system("mode con cols=110 lines=30"); 
     system("cls");
-    system("mode con cols=120 lines=30"); // 强制控制台至少 120 宽，30 高
+    
     int currentLevel = 1;
     bool gameBeaten = false;
 
-    // ==========================================
-    // 外层循环：关卡状态机 (Level Manager)
-    // ==========================================
     while (!gameBeaten) {
-        // 动态加载地图文件，如 map1.csv, map2.csv
         string mapFile = "map" + to_string(currentLevel) + ".csv";
         Map gameMap(50, 20);
         
         if (!gameMap.loadFromCSV(mapFile)) {
-            // 如果加载 map2.csv 失败，说明没有下一关了，游戏通关！
             system("cls");
             cout << "\n\n\t\tTHE END\n\t\t你完成了所有的试炼，骑士！\n\n";
             break; 
         }
 
-        // 每一关重置主角位置 (可以根据关卡号设置不同的出生点)
-        Player player(15, 12); 
-        Enemy enemy(25, 12, 50);
-
-        // 设置本关的终点坐标
-        int goalX = 28, goalY = 5; 
-        if (currentLevel == 2) { goalX = 2; goalY = 12; } // 假设第二关终点在左下角
+        // ==========================================
+        // 【核心】从地图中读取主角和传送门坐标
+        // ==========================================
+        SpawnPoint pSpawn = gameMap.getPlayerSpawn();
+        SpawnPoint goal = gameMap.getGoalPoint();
+        
+        Player player(pSpawn.x, pSpawn.y); 
+        
+        vector<Enemy> enemies;
+        for (const auto& spawn : gameMap.getEnemySpawns()) {
+            if (spawn.type == 8) {
+                enemies.emplace_back(spawn.x, spawn.y, 20); 
+            }
+        }
 
         bool levelComplete = false;
         auto lastTime = chrono::high_resolution_clock::now();
         bool lastJumpState = false; 
-
         combatLog = "进入第 " + to_string(currentLevel) + " 层...";
 
-        // ==========================================
-        // 内层循环：实时物理引擎与战斗 (Game Loop)
-        // ==========================================
         while (player.isAlive() && !levelComplete) {
             if (KEY_PRESSED('Q')) { gameBeaten = true; break; }
 
-            // 时间差计算
             auto currentTime = chrono::high_resolution_clock::now();
             float dt = chrono::duration<float>(currentTime - lastTime).count();
             lastTime = currentTime;
             if (dt > 0.05f) dt = 0.05f;
 
-            // 输入处理
             int moveDir = 0;
             if (KEY_PRESSED('A')) moveDir -= 1;
             if (KEY_PRESSED('D')) moveDir += 1;
@@ -101,50 +125,51 @@ int main() {
             lastJumpState = jumpHeld;
             player.processJump(jumpPressed, jumpHeld);
 
+            bool downHeld = KEY_PRESSED('S');
+
             static int attackCd = 0;
             if (attackCd > 0) attackCd--;
             if (KEY_PRESSED('J') && attackCd <= 0) {
-                player.attack(enemy, gameMap);
-                attackCd = 10;
+                player.attack(enemies, gameMap, downHeld);
+                attackCd = 15;
             }
 
-            // 物理更新
             player.update(gameMap, dt);
-            enemy.update(gameMap, player, dt);
-
-            // ------------------------------------------
-            // 场景交互逻辑
-            // ------------------------------------------
             
-            // 1. 通关检测：碰到传送门 'O'
-            if (player.getX() == goalX && player.getY() == goalY) {
+            for (auto& enemy : enemies) {
+                if (enemy.isAlive()) {
+                    enemy.update(gameMap, player, dt);
+                }
+            }
+
+            // 环境伤害检测
+            TileType bodyTile = gameMap.getTileAt(player.getX(), player.getY());
+            TileType footTile = gameMap.getTileAt(player.getX(), player.getY() + 1);
+
+            if (bodyTile == TileType::SpikeUp || footTile == TileType::SpikeUp || player.getY() >= 19) {
+                player.takeDamage(20, player.getX(), gameMap); 
+                combatLog = "踩到地刺/坠渊！HP -20";
+            }
+
+            // 通关判定：检测是否到达读取出的门坐标
+            if (player.getX() == goal.x && player.getY() == goal.y) {
                 levelComplete = true;
                 combatLog = "抵达出口！准备传送...";
             }
 
-            // 2. 环境陷阱检测：如果掉入 y=14 的深渊（底层）
-            if (player.getY() >= 19) {
-                // 环境伤害：假装这伤害是来自于 x=15 的位置，产生随机方向击退
-                player.takeDamage(20, 15, gameMap); 
-                combatLog = "踩到地刺/岩浆！HP -20";
-            }
-
-            renderGame(gameMap, player, enemy, currentLevel, goalX, goalY);
+            renderGame(gameMap, player, enemies, currentLevel, goal);
             Sleep(15); 
         }
 
-        // --- 单局结算 ---
         if (!player.isAlive()) {
             system("cls");
-            cout << "\n\n\t\tYOU DIED\n\t\t意志在黑暗中消散了...\n\n";
-            break; // 死亡直接结束外层循环
+            cout << "\n\n\t\tYOU DIED\n\n";
+            break; 
         }
-
         if (levelComplete) {
-            // 短暂停顿，让玩家看清过关提示
             Sleep(800); 
             system("cls");
-            currentLevel++; // 关卡号+1，外层循环将尝试加载下一张地图
+            currentLevel++; 
         }
     }
     return 0;

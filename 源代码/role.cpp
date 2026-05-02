@@ -139,41 +139,93 @@ void Player::update(const Map& gameMap, float dt) {
     }
 }
 
-void Player::attack(Role& target, const Map& gameMap) {
-    if (!target.isAlive()) return;
-    if (abs(target.getX() - x) <= 2 && (target.getX() - x) * facingDirection >= 0) {
-        target.takeDamage(baseDamage, x, gameMap);
-        combatLog = "发起劈砍！";
+bool Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed) {
+    bool pogoSuccess = false;
+    
+    // ==========================================
+    // 1. 空洞骑士神技：下劈 (在空中 + 按下方向键)
+    // ==========================================
+    if (!isGrounded && downPressed) {
+        // A. 检测是否下劈到了怪物
+        for (auto& target : enemies) {
+            if (!target.isAlive()) continue;
+            // 判定条件：怪物在脚下 1~2 格距离内，且水平基本对齐
+            if (abs(target.getX() - x) <= 1 && (target.getY() - y) > 0 && (target.getY() - y) <= 2) {
+                target.takeDamage(baseDamage, x, gameMap);
+                pogoSuccess = true;
+                combatLog = "【下劈弹刀！】命中爬虫！";
+            }
+        }
+        
+        // B. 检测是否下劈到了地刺 (借助危险环境跳跃)
+        TileType tileBelow = gameMap.getTileAt(x, y + 2); 
+        if (tileBelow == TileType::SpikeUp) {
+            pogoSuccess = true;
+            combatLog = "【下劈弹刀！】借助地刺弹起！";
+        }
+        
+        // C. 弹刀成功，重置物理状态
+        if (pogoSuccess) {
+            velocityY = jumpForce * 0.9f; // 赋予向上的反冲动能
+            jumpCount = 1; // 刷新二段跳次数
+            return true;
+        }
+    } 
+    // ==========================================
+    // 2. 正常平砍 (左右挥剑)
+    // ==========================================
+    else {
+        bool hitSomething = false;
+        for (auto& target : enemies) {
+            if (!target.isAlive()) continue;
+            // 判定条件：水平距离<=2，且方向朝向怪物，垂直误差<=1
+            if (abs(target.getY() - y) <= 1 && abs(target.getX() - x) <= 2 && (target.getX() - x) * facingDirection >= 0) {
+                target.takeDamage(baseDamage, x, gameMap);
+                hitSomething = true;
+                combatLog = "发起平砍！";
+            }
+        }
+        if (!hitSomething) combatLog = "挥空了...";
     }
+    return false;
 }
-
 // ==========================================
 // Enemy 逻辑 (同步 dt 接口)
 // ==========================================
+
 Enemy::Enemy(int startX, int startY, int expGive)
-    : Role("爬虫", startX, startY, 40, 12), moveDirection(1), expReward(expGive), attackCooldown(0) {}
+    : Role("爬虫", startX, startY, 40, 12), moveDirection(1), expReward(expGive), attackCooldown(0), moveTimer(0.0f) {}
 
 void Enemy::update(const Map& gameMap, Player& player, float dt) {
     if (!alive) return;
     if (flickerTimer > 0) flickerTimer--;
     if (attackCooldown > 0) attackCooldown--;
 
-    if (gameMap.getTileAt(x, y + 1) == TileType::Empty) {
+    // 悬空坠落逻辑
+    if (gameMap.getTileAt(x, y + 1) == TileType::Empty || gameMap.getTileAt(x, y + 1) == TileType::Void) {
         y++; realY = (float)y;
     } else {
-        // 这里简单用帧计数，也可以改为 dt 累加
-        static int f = 0;
-        if (++f % 10 == 0) {
+        // 【核心修复】：使用独立计时器累加 dt
+        moveTimer += dt;
+        if (moveTimer >= 0.15f) { // 每 0.15 秒移动一次
+            moveTimer = 0.0f; // 重置专属计时器
+            
             int nx = x + moveDirection;
-            if (gameMap.getTileAt(nx, y) == TileType::Wall || gameMap.getTileAt(nx, y + 1) == TileType::Empty) {
+            TileType nextFloor = gameMap.getTileAt(nx, y + 1);
+            TileType nextWall = gameMap.getTileAt(nx, y);
+            
+            // 边缘探测：如果前面是墙，或者前面脚下是空气/深渊，就转身
+            if (nextWall == TileType::Wall || nextFloor == TileType::Empty || nextFloor == TileType::Void) {
                 moveDirection *= -1;
-            } else { x = nx; realX = (float)x; }
+            } else {
+                x = nx; realX = (float)x;
+            }
         }
     }
 
+    // 攻击判定
     if (abs(player.getX() - x) <= 1 && abs(player.getY() - y) <= 1 && attackCooldown <= 0) {
         player.takeDamage(baseDamage, x, gameMap);
         attackCooldown = 20;
-        combatLog = "警告：骑士受到伤害！";
     }
 }

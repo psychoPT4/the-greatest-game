@@ -3,6 +3,7 @@
 
 #include <string>
 #include "map.h"
+#include<vector>
 
 class Player; 
 
@@ -53,13 +54,13 @@ public:
     // 取代原来的 move 和 jump，改为状态输入
     void setMoveIntent(int dir); 
     void processJump(bool jumpPressed, bool jumpHeld); 
-    void attack(Role& target, const Map& gameMap);
+    bool attack(std::vector<class Enemy>& enemies, const Map& gameMap, bool downPressed);
 };
 
 class Enemy : public Role {
 private:
     int moveDirection, expReward, attackCooldown;
-
+    float moveTimer;
 public:
     Enemy(int startX, int startY, int expGive);
     void update(const Map& gameMap, Player& player, float dt); 
