@@ -1,3 +1,4 @@
+#pragma execution_character_set("utf-8")
 #include <iostream>
 #include <string>
 #include <vector>
@@ -12,11 +13,32 @@ using namespace std;
 enum GameState { MENU, PLAYING, GAME_OVER };
 GameState currentState = MENU;
 
+// 菜单孢子粒子
 struct SporeParticle {
     Vector2 pos;
     Vector2 velocity;
     float radius;
     unsigned char alpha;
+};
+
+// 【新增】战斗受击火花粒子
+struct HitParticle {
+    Vector2 pos;       // 物理逻辑坐标
+    Vector2 velocity;  // 弹射速度
+    float life;        // 当前剩余寿命
+    float maxLife;     // 初始总寿命
+    Color color;       // 粒子颜色
+    float size;        // 粒子大小
+};
+struct DashTrail {
+    Texture2D tex;      // 记录残影生成时，主角用的是哪张贴图
+    int frameIndex;     // 记录当时切到了第几帧
+    int totalFrames;    // 总帧数
+    float worldX;       // 必须记录世界坐标，否则残影会跟着屏幕一起跑！
+    float worldY;
+    bool facingLeft;    // 记录当时的朝向
+    float life;         // 剩余寿命
+    float maxLife;      // 初始总寿命
 };
 
 string combatLog = "Adventure continues...";
@@ -43,10 +65,22 @@ int main() {
     InitWindow(screenWidth, screenHeight, "Fulfilling Knight - Graphic Era");
     SetTargetFPS(60);
 
+    // ==========================================
+    // 资源加载区
+    // ==========================================
+    int codepointCount = (127 - 32) + (0x9FA5 - 0x4E00 + 1);
+    int* codepoints = new int[codepointCount];
+    int index = 0;
+    for (int i = 32; i < 127; i++) codepoints[index++] = i;
+    for (int i = 0x4E00; i <= 0x9FA5; i++) codepoints[index++] = i;
+    Font myFont = LoadFontEx("font.ttf", 32, codepoints, codepointCount);
+    delete[] codepoints;
+
     Texture2D bgTex = LoadTexture("bg.png");
     Texture2D texStand = LoadTexture("knight_stand.png");
     Texture2D texWalk = LoadTexture("knight_walk.png");
     Texture2D texRun = LoadTexture("knight_run.png");
+    Texture2D texAttack = LoadTexture("knight_attack.png"); // 攻击序列帧
     Texture2D crawlerTex = LoadTexture("crawler.png");
     Texture2D wallTex = LoadTexture("wall.png");
     Texture2D platformTex = LoadTexture("platform.png");
@@ -65,6 +99,9 @@ int main() {
     Rectangle btnSettings = { screenWidth / 2.0f - 100, screenHeight / 2.0f + 70, 200, 50 };
     Rectangle btnExit = { screenWidth / 2.0f - 100, screenHeight / 2.0f + 140, 200, 50 };
 
+    // ==========================================
+    // 物理系统与粒子弹匣
+    // ==========================================
     vector<SporeParticle> particles;
     for (int i = 0; i < 150; i++) {
         particles.push_back({
@@ -74,7 +111,23 @@ int main() {
             (unsigned char)GetRandomValue(50, 200)
             });
     }
+    vector<DashTrail> dashTrails;
+    vector<HitParticle> hitParticles;
+    float hitStopTimer = 0.0f;
+    float camShakeX = 0.0f;
+    float camShakeY = 0.0f;
 
+    // 独立攻击状态机变量
+    bool isAttacking = false;
+    int attackFrame = 0;
+    float attackAnimTimer = 0.0f;
+    bool damageDealtThisSwing = false;
+    const int ATTACK_TOTAL_FRAMES = 5;
+    const float ATTACK_SPEED = 0.05f;
+
+    // ==========================================
+    // 游戏主循环
+    // ==========================================
     while (!WindowShouldClose()) {
 
         float dt = GetFrameTime();
@@ -83,15 +136,12 @@ int main() {
         if (currentState == MENU) {
             Vector2 mousePos = GetMousePosition();
             for (auto& p : particles) {
-                p.pos.x += p.velocity.x;
-                p.pos.y += p.velocity.y;
-                float dx = p.pos.x - mousePos.x;
-                float dy = p.pos.y - mousePos.y;
+                p.pos.x += p.velocity.x; p.pos.y += p.velocity.y;
+                float dx = p.pos.x - mousePos.x; float dy = p.pos.y - mousePos.y;
                 float dist = sqrt(dx * dx + dy * dy);
                 if (dist < 120.0f && dist > 0.1f) {
                     float force = (120.0f - dist) / 120.0f;
-                    p.pos.x += (dx / dist) * force * 5.0f;
-                    p.pos.y += (dy / dist) * force * 5.0f;
+                    p.pos.x += (dx / dist) * force * 5.0f; p.pos.y += (dy / dist) * force * 5.0f;
                 }
                 if (p.pos.y < -10) p.pos.y = screenHeight + 10;
                 if (p.pos.x < -10) p.pos.x = screenWidth + 10;
@@ -99,8 +149,7 @@ int main() {
             }
 
             if (CheckCollisionPointRec(mousePos, btnStart) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                currentState = PLAYING;
-                mapLoaded = false;
+                currentState = PLAYING; mapLoaded = false;
             }
             if (CheckCollisionPointRec(mousePos, btnExit) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 break;
@@ -108,9 +157,7 @@ int main() {
         }
         else if (currentState == PLAYING) {
             if (!mapLoaded) {
-                if (!gameMap.loadFromCSV("map" + to_string(currentLevel) + ".csv")) {
-                    break;
-                }
+                if (!gameMap.loadFromCSV("map" + to_string(currentLevel) + ".csv")) break;
                 SpawnPoint pSpawn = gameMap.getPlayerSpawn();
                 player.setRealPos((float)pSpawn.x, (float)pSpawn.y);
                 safeX = (float)pSpawn.x; safeY = (float)pSpawn.y;
@@ -123,34 +170,114 @@ int main() {
             }
 
             if (IsKeyPressed(KEY_Q)) break;
-
-            // 【新增】：按 L 键触发冲刺！
-            if (IsKeyPressed(KEY_L)) {
-                player.startDash();
-            }
+            if (IsKeyPressed(KEY_L)) player.startDash();
 
             int moveDir = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
             player.setMoveIntent(moveDir);
+            player.setRunningMode(IsKeyDown(KEY_LEFT_SHIFT));
 
             bool jump = IsKeyDown(KEY_K);
             static bool lastJump = false;
             player.processJump(jump && !lastJump, jump);
             lastJump = jump;
 
-            if (attackCd > 0) attackCd--;
-            if (IsKeyDown(KEY_J) && attackCd <= 0) {
-                AttackResult result = player.attack(enemies, gameMap, IsKeyDown(KEY_S));
-                if (result.totalXp > 0) player.addExp(result.totalXp);
-                attackCd = 12;
+            // --- 严密的攻击帧同步系统 ---
+            if (IsKeyDown(KEY_J) && !isAttacking && attackCd <= 0 && !player.getIsDashing()) {
+                isAttacking = true;
+                attackFrame = 0;
+                attackAnimTimer = 0.0f;
+                damageDealtThisSwing = false;
             }
 
-            player.update(gameMap, dt);
+            if (isAttacking) {
+                if (hitStopTimer <= 0.0f) {
+                    attackAnimTimer += dt;
+                    if (attackAnimTimer >= ATTACK_SPEED) {
+                        attackFrame++;
+                        attackAnimTimer = 0.0f;
+                    }
+                }
 
-            if (gameMap.getTileAt(player.getX(), player.getY() + 1) == TileType::Wall) {
-                safeX = player.getRealX(); safeY = player.getRealY();
+                if (attackFrame == 2 && !damageDealtThisSwing) {
+                    AttackResult result = player.attack(enemies, gameMap, IsKeyDown(KEY_S));
+                    if (result.totalXp > 0) player.addExp(result.totalXp);
+
+                    if (result.hitSomething || result.pogoSuccess) {
+                        hitStopTimer = 0.08f;
+
+                        float hitX = player.getRealX();
+                        float hitY = player.getRealY();
+                        if (result.pogoSuccess) {
+                            hitY += 1.0f;
+                        }
+                        else {
+                            hitY += 0.5f;
+                            hitX += IsKeyDown(KEY_A) ? -0.6f : 0.6f;
+                        }
+
+                        int sparkCount = GetRandomValue(45, 65);
+                        for (int i = 0; i < sparkCount; i++) {
+                            HitParticle p;
+                            p.pos = { hitX, hitY };
+                            p.velocity.x = GetRandomValue(-50, 50) / 1.0f;
+                            p.velocity.y = GetRandomValue(-40, 5) / 1.0f;
+                            p.maxLife = GetRandomValue(15, 35) / 100.0f;
+                            p.life = p.maxLife;
+                            p.size = GetRandomValue(4, 20) / 100.0f;
+
+                            int colorRoll = GetRandomValue(0, 10);
+                            if (colorRoll < 2) p.color = ORANGE;
+                            else if (colorRoll < 6) p.color = YELLOW;
+                            else p.color = WHITE;
+
+                            hitParticles.push_back(p);
+                        }
+                    }
+                    damageDealtThisSwing = true;
+                }
+
+                if (attackFrame >= ATTACK_TOTAL_FRAMES) {
+                    isAttacking = false;
+                    attackCd = 12;
+                }
+            }
+            else {
+                if (attackCd > 0) attackCd--;
             }
 
-            for (auto& e : enemies) e.update(gameMap, player, dt);
+            // --- 时停系统与物理接管 ---
+            if (hitStopTimer > 0.0f) {
+                hitStopTimer -= dt;
+                camShakeX = GetRandomValue(-15, 15) / 100.0f;
+                camShakeY = GetRandomValue(-15, 15) / 100.0f;
+            }
+            else {
+                camShakeX = 0.0f;
+                camShakeY = 0.0f;
+
+                player.update(gameMap, dt);
+
+                if (gameMap.getTileAt(player.getX(), player.getY() + 1) == TileType::Wall) {
+                    safeX = player.getRealX(); safeY = player.getRealY();
+                }
+
+                for (auto& e : enemies) e.update(gameMap, player, dt);
+
+                for (auto it = hitParticles.begin(); it != hitParticles.end(); ) {
+                    it->velocity.y += 40.0f * dt;
+                    it->pos.x += it->velocity.x * dt;
+                    it->pos.y += it->velocity.y * dt;
+                    it->life -= dt;
+                    if (it->life <= 0) it = hitParticles.erase(it);
+                    else ++it;
+                }
+                // 【就是这里！】：把截图里那段残影衰减贴在下面
+                for (auto it = dashTrails.begin(); it != dashTrails.end(); ) {
+                    it->life -= dt;
+                    if (it->life <= 0) it = dashTrails.erase(it);
+                    else ++it;
+                }
+            }
 
             Hitbox pBox = player.getHitbox();
             TileType footL = gameMap.getTileAt((int)pBox.left, (int)pBox.bottom);
@@ -201,7 +328,7 @@ int main() {
                 DrawRectangleGradientV(0, 0, screenWidth, screenHeight, topColor, botColor);
             }
 
-            DrawText("Fulfilling Knight", screenWidth / 2 - 220, screenHeight / 2 - 150, 60, LIGHTGRAY);
+            DrawTextEx(myFont, "Fulfilling Knight", { (float)(screenWidth / 2 - 220), (float)(screenHeight / 2 - 150) }, 60, 1.0f, LIGHTGRAY);
 
             for (const auto& p : particles) {
                 Color sporeColor = { 135, 206, 235, p.alpha };
@@ -211,17 +338,17 @@ int main() {
             bool hoverStart = CheckCollisionPointRec(mousePos, btnStart);
             DrawRectangleRec(btnStart, hoverStart ? DARKGRAY : BLANK);
             DrawRectangleLinesEx(btnStart, 2, hoverStart ? WHITE : GRAY);
-            DrawText("START GAME", btnStart.x + 40, btnStart.y + 15, 20, hoverStart ? WHITE : GRAY);
+            DrawTextEx(myFont, "START GAME", { (float)(btnStart.x + 40), (float)(btnStart.y + 15) }, 20, 1.0f, hoverStart ? WHITE : GRAY);
 
             bool hoverSettings = CheckCollisionPointRec(mousePos, btnSettings);
             DrawRectangleRec(btnSettings, hoverSettings ? DARKGRAY : BLANK);
             DrawRectangleLinesEx(btnSettings, 2, hoverSettings ? WHITE : GRAY);
-            DrawText("SETTINGS", btnSettings.x + 55, btnSettings.y + 15, 20, hoverSettings ? WHITE : GRAY);
+            DrawTextEx(myFont, "SETTINGS", { (float)(btnSettings.x + 55), (float)(btnSettings.y + 15) }, 20, 1.0f, hoverSettings ? WHITE : GRAY);
 
             bool hoverExit = CheckCollisionPointRec(mousePos, btnExit);
             DrawRectangleRec(btnExit, hoverExit ? DARKGRAY : BLANK);
             DrawRectangleLinesEx(btnExit, 2, hoverExit ? WHITE : GRAY);
-            DrawText("EXIT", btnExit.x + 80, btnExit.y + 15, 20, hoverExit ? WHITE : GRAY);
+            DrawTextEx(myFont, "EXIT", { (float)(btnExit.x + 80), (float)(btnExit.y + 15) }, 20, 1.0f, hoverExit ? WHITE : GRAY);
         }
         else if (currentState == PLAYING) {
             if (bgTex.id != 0) {
@@ -238,8 +365,8 @@ int main() {
                     int worldY = (int)cam.y + sy;
 
                     TileType t = gameMap.getTileAt(worldX, worldY);
-                    float renderX = (worldX - cam.x) * TILE_SIZE;
-                    float renderY = (worldY - cam.y) * TILE_SIZE;
+                    float renderX = (worldX - cam.x + camShakeX) * TILE_SIZE;
+                    float renderY = (worldY - cam.y + camShakeY) * TILE_SIZE;
 
                     if (t == TileType::Wall) {
                         if (wallTex.id != 0) DrawTexExact(wallTex, renderX, renderY, TILE_SIZE, TILE_SIZE);
@@ -262,28 +389,27 @@ int main() {
                 }
             }
 
-            // 绘制怪物
             for (const auto& e : enemies) {
                 if (e.isAlive()) {
-                    float renderX = (e.getRealX() - cam.x - 0.10f) * TILE_SIZE;
-                    float renderY = (e.getRealY() - cam.y + 0.40f) * TILE_SIZE;
+                    float renderX = (e.getRealX() - cam.x - 0.10f + camShakeX) * TILE_SIZE;
+                    float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
 
                     if (crawlerTex.id != 0) {
                         DrawTexExact(crawlerTex, renderX, renderY, 1.0f * TILE_SIZE, 0.6f * TILE_SIZE, e.isFlickering() ? RED : WHITE);
                     }
                     else {
-                        DrawRectangle((e.getRealX() - cam.x) * TILE_SIZE, (e.getRealY() - cam.y) * TILE_SIZE, 0.8f * TILE_SIZE, 0.5f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
+                        DrawRectangle(renderX, renderY, 0.8f * TILE_SIZE, 0.5f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
                     }
                 }
             }
 
-            // 绘制玩家骑士（动画状态机）
-            float pRenderX = (player.getRealX() - cam.x - 0.25f) * TILE_SIZE;
-            float pRenderY = (player.getRealY() - cam.y) * TILE_SIZE;
+            // 绘制玩家骑士（强化的渲染状态机）
+            float pRenderX = (player.getRealX() - cam.x - 0.25f + camShakeX) * TILE_SIZE;
+            float pRenderY = (player.getRealY() - cam.y + camShakeY) * TILE_SIZE;
 
             static bool facingLeft = false;
-            // 判断朝向（冲刺期间朝向被锁定）
-            if (!player.getIsDashing()) {
+            // 冲刺和攻击时，强行锁死身体朝向
+            if (!player.getIsDashing() && !isAttacking) {
                 if (IsKeyDown(KEY_A)) facingLeft = true;
                 else if (IsKeyDown(KEY_D)) facingLeft = false;
             }
@@ -295,12 +421,17 @@ int main() {
 
             Texture2D activeTex = texStand;
             int totalFrames = 2;
+            int frameToDraw = currentFrame;
 
-            // 优先判定冲刺和跑动状态
-            if (player.getIsDashing()) {
-                // 如果你有专门的 dash 贴图可以加上，目前借用 run 的贴图
+            if (isAttacking) {
+                activeTex = texAttack;
+                totalFrames = ATTACK_TOTAL_FRAMES;
+                frameToDraw = attackFrame;
+            }
+            else if (player.getIsDashing()) {
                 activeTex = texRun;
                 totalFrames = 5;
+                frameToDraw = currentFrame;
             }
             else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_D)) {
                 if (IsKeyDown(KEY_LEFT_SHIFT)) {
@@ -311,10 +442,12 @@ int main() {
                     activeTex = texWalk;
                     totalFrames = 3;
                 }
+                frameToDraw = currentFrame;
             }
             else {
                 activeTex = texStand;
                 totalFrames = 2;
+                frameToDraw = currentFrame;
             }
 
             static unsigned int lastTexId = activeTex.id;
@@ -324,33 +457,86 @@ int main() {
                 lastTexId = activeTex.id;
             }
 
-            if (frameTimer >= FRAME_UPDATE_TIME) {
+            // 只有不在攻击时，才推进日常帧数
+            if (!isAttacking && frameTimer >= FRAME_UPDATE_TIME) {
                 currentFrame = (currentFrame + 1) % totalFrames;
                 frameTimer = 0.0f;
             }
+            // ==========================================
+            // 【核心】：残影的生成逻辑 (冲刺强残影 + 奔跑弱残影)
+            // ==========================================
 
+            // 1. 冲刺状态：高频、高亮、滞留时间长的冰蓝色残影
+            if (player.getIsDashing()) {
+                static float dashTrailTimer = 0.0f;
+                dashTrailTimer += GetFrameTime();
+                if (dashTrailTimer >= 0.04f) { // 每 0.04 秒克隆一次
+                    dashTrailTimer = 0.0f;
+                    DashTrail trail = { activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.35f, 0.35f };
+                    dashTrails.push_back(trail);
+                }
+            }
+            // 2. 【新增】奔跑状态：低频、极淡、瞬间消散的流线弱残影
+            // 只有当主动贴图是奔跑态 (texRun)，且没有在挥刀攻击时才触发
+            else if (activeTex.id == texRun.id && !isAttacking) {
+                static float runTrailTimer = 0.0f;
+                runTrailTimer += GetFrameTime();
+                if (runTrailTimer >= 0.06f) { // 频率减半，每 0.06 秒克隆一次
+                    runTrailTimer = 0.0f;
+
+                    // 【数值魔法】：寿命极短(0.15)，但分母极大(0.60)
+                    // 一出生透明度就只有 200*(0.15/0.60) = 50，制造出一种若隐若现的剥离感
+                    DashTrail trail = { activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.25f, 0.4f };
+                    dashTrails.push_back(trail);
+                }
+            }
+            for (const auto& trail : dashTrails) {
+                // 将记录的“世界坐标”转换回“屏幕渲染坐标”（别忘了加上震动偏移）
+                float tRenderX = (trail.worldX - cam.x - 0.25f + camShakeX) * TILE_SIZE;
+                float tRenderY = (trail.worldY - cam.y + camShakeY) * TILE_SIZE;
+
+                // 计算逐渐消散的透明度 Alpha
+                unsigned char alpha = (unsigned char)(200 * (trail.life / trail.maxLife));
+                Color trailColor = { 50, 150, 255, alpha }; // 冰蓝色的幽灵特效
+
+                DrawSpriteFrame(trail.tex, trail.frameIndex, trail.totalFrames, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
+            }
             if (activeTex.id != 0) {
-                DrawSpriteFrame(activeTex, currentFrame, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, facingLeft);
+                DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, facingLeft);
             }
             else {
-                DrawRectangle((player.getRealX() - cam.x) * TILE_SIZE, (player.getRealY() - cam.y) * TILE_SIZE, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
+                DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
             }
 
-            DrawText(TextFormat("HP: %d/%d  LVL: %d  XP: %d/%d", player.getHp(), player.getMaxHp(), player.getLevel(), player.getExp(), player.getExpToNext()), 10, 10, 20, GREEN);
-            DrawText(combatLog.c_str(), 10, 40, 20, WHITE);
+            // 绘制火花特效
+            for (const auto& p : hitParticles) {
+                float renderX = (p.pos.x - cam.x + camShakeX) * TILE_SIZE;
+                float renderY = (p.pos.y - cam.y + camShakeY) * TILE_SIZE;
+                unsigned char alpha = (unsigned char)(255 * (p.life / p.maxLife));
+                Color renderColor = { p.color.r, p.color.g, p.color.b, alpha };
+                DrawRectangle(renderX, renderY, p.size * TILE_SIZE, p.size * TILE_SIZE, renderColor);
+            }
+
+            DrawTextEx(myFont, TextFormat("HP: %d/%d  LVL: %d  XP: %d/%d", player.getHp(), player.getMaxHp(), player.getLevel(), player.getExp(), player.getExpToNext()), { 10, 10 }, 20, 1.0f, GREEN);
+            DrawTextEx(myFont, combatLog.c_str(), { 10, 40 }, 20, 1.0f, WHITE);
         }
         else if (currentState == GAME_OVER) {
-            DrawText("GAME OVER", 280, 150, 40, RED);
-            DrawText("The knight has fallen...", 280, 220, 20, LIGHTGRAY);
+            DrawTextEx(myFont, "GAME OVER", { 280, 150 }, 40, 1.0f, RED);
+            DrawTextEx(myFont, "The knight has fallen...", { 280, 220 }, 20, 1.0f, LIGHTGRAY);
         }
 
         EndDrawing();
     }
 
+    // ==========================================
+    // 资源释放区
+    // ==========================================
+    UnloadFont(myFont);
     UnloadTexture(bgTex);
     UnloadTexture(texStand);
     UnloadTexture(texWalk);
     UnloadTexture(texRun);
+    UnloadTexture(texAttack);
     UnloadTexture(crawlerTex);
     UnloadTexture(wallTex);
     UnloadTexture(platformTex);

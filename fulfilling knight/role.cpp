@@ -1,3 +1,4 @@
+#pragma execution_character_set("utf-8")
 #include "Role.h"
 #include <iostream>
 #include <cmath>
@@ -19,7 +20,7 @@ void Role::takeDamage(int amount, int attackerX, const Map& gameMap) {
     flickerTimer = (name == "骑士") ? 50 : 5;
 
     int kDir = (x > attackerX) ? 1 : -1;
-    float targetX = realX + kDir * 2.0f;
+    float targetX = realX + kDir * 1.0f;
     if (gameMap.getTileAt((int)round(targetX), y) != TileType::Wall) {
         realX = targetX;
         x = (int)round(realX);
@@ -37,10 +38,10 @@ void Role::takeDamage(int amount, int attackerX, const Map& gameMap) {
 Player::Player(int startX, int startY)
     : Role("骑士", startX, startY, 100, 25),
     level(1), currentExp(0), expToNextLevel(100), mana(100), jumpCount(0), moveIntent(0),
-    maxRunSpeed(15.0f), runAccel(150.0f), groundFriction(200.0f), airDrag(80.0f),
+    maxRunSpeed(12.0f), runAccel(120.0f), groundFriction(160.0f), airDrag(80.0f),
     gravity(85.0f), jumpForce(-26.0f), maxFallSpeed(30.0f),
     isDashing(false), dashSpeed(40.0f), dashDuration(0.2f), dashTimer(0.0f),
-    dashCooldown(0.6f), dashCooldownTimer(0.0f), dashDirection(1)
+    dashCooldown(0.6f), dashCooldownTimer(0.0f), dashDirection(1), isRunningMode(false)
 {
     hbWidth = 0.5f; hbHeight = 0.8f;
 }
@@ -49,7 +50,15 @@ void Player::setMoveIntent(int dir) {
     moveIntent = dir;
     if (dir != 0) facingDirection = dir;
 }
-
+void Player::takeDamage(int damage, int sourceX, const Map& gameMap) {
+    // 冲刺期间，强行没收伤害！
+    if (isDashing) {
+        combatLog = "闪避！无敌帧生效！";
+        return;
+    }
+    // 如果没有冲刺，按原来的正常逻辑扣血和击退
+    Role::takeDamage(damage, sourceX, gameMap);
+}
 void Player::processJump(bool jumpPressed, bool jumpHeld) {
     if (jumpPressed) {
         if (isGrounded) {
@@ -101,9 +110,12 @@ void Player::update(const Map& gameMap, float dt) {
     else {
         // 常规物理系统：加速、摩擦力、空气阻力、重力
         float currentFriction = isGrounded ? groundFriction : airDrag;
+        float currentMaxSpeed = isRunningMode ? maxRunSpeed : (maxRunSpeed * 0.6f);
         if (moveIntent != 0) {
             velocityX += runAccel * moveIntent * dt;
-            velocityX = std::clamp(velocityX, -maxRunSpeed, maxRunSpeed);
+            // 【核心】：必须同时锁死正负两个方向的极限速度
+            if (velocityX > currentMaxSpeed) velocityX = currentMaxSpeed;
+            if (velocityX < -currentMaxSpeed) velocityX = -currentMaxSpeed;
         }
         else {
             if (velocityX > 0) { velocityX -= currentFriction * dt; if (velocityX < 0) velocityX = 0; }
@@ -189,6 +201,7 @@ AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, boo
             if (pogoBox.intersects(target.getHitbox())) {
                 target.takeDamage(baseDamage, x, gameMap);
                 res.pogoSuccess = true;
+                res.hitSomething = true;
                 combatLog = "【下劈弹刀！】命中目标！";
                 if (!target.isAlive()) res.totalXp += target.getExpReward();
             }
@@ -210,6 +223,7 @@ AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, boo
             if (!target.isAlive()) continue;
             if (slashBox.intersects(target.getHitbox())) {
                 target.takeDamage(baseDamage, x, gameMap);
+                res.hitSomething = true;
                 hitSomething = true; combatLog = "发起平砍！";
                 if (!target.isAlive()) res.totalXp += target.getExpReward();
             }
@@ -267,7 +281,7 @@ void Enemy::update(const Map& gameMap, Player& player, float dt) {
         }
 
         moveTimer += dt;
-        if (moveTimer >= 0.15f) {
+        if (moveTimer >= 0.25f) {
             moveTimer = 0.0f;
             int nx = x + intentDir;
 

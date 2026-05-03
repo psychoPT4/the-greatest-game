@@ -10,7 +10,8 @@
 struct AttackResult {
     bool pogoSuccess;
     int totalXp;
-    AttackResult() : pogoSuccess(false), totalXp(0) {}
+    bool hitSomething;
+    AttackResult() : pogoSuccess(false), totalXp(0),hitSomething(false){}
 };
 
 struct Hitbox {
@@ -88,7 +89,7 @@ private:
     float dashCooldown;
     float dashCooldownTimer;
     int dashDirection;
-
+    bool isRunningMode;
 public:
     Player(int startX, int startY);
     void update(const Map& gameMap, float dt) override;
@@ -96,8 +97,9 @@ public:
     bool getIsDashing() const { return isDashing; }
     void setMoveIntent(int dir);
     void processJump(bool jumpPressed, bool jumpHeld);
+    void takeDamage(int damage, int sourceX, const Map& gameMap) override;
     AttackResult attack(std::vector<class Enemy>& enemies, const Map& gameMap, bool downPressed);
-
+    void setRunningMode(bool run) { isRunningMode = run; }
     int getLevel() const { return level; }
     int getExp() const { return currentExp; }
     int getExpToNext() const { return expToNextLevel; }
