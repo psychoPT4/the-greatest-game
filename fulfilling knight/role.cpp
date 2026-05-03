@@ -18,7 +18,6 @@ void Role::takeDamage(int amount, int attackerX, const Map& gameMap) {
     hp -= amount;
     flickerTimer = (name == "骑士") ? 50 : 5;
 
-    // 【保留你的击退逻辑】
     int kDir = (x > attackerX) ? 1 : -1;
     float targetX = realX + kDir * 2.0f;
     if (gameMap.getTileAt((int)round(targetX), y) != TileType::Wall) {
@@ -39,7 +38,9 @@ Player::Player(int startX, int startY)
     : Role("骑士", startX, startY, 100, 25),
     level(1), currentExp(0), expToNextLevel(100), mana(100), jumpCount(0), moveIntent(0),
     maxRunSpeed(15.0f), runAccel(150.0f), groundFriction(200.0f), airDrag(80.0f),
-    gravity(85.0f), jumpForce(-26.0f), maxFallSpeed(30.0f)
+    gravity(85.0f), jumpForce(-26.0f), maxFallSpeed(30.0f),
+    isDashing(false), dashSpeed(40.0f), dashDuration(0.2f), dashTimer(0.0f),
+    dashCooldown(0.6f), dashCooldownTimer(0.0f), dashDirection(1)
 {
     hbWidth = 0.5f; hbHeight = 0.8f;
 }
@@ -63,24 +64,59 @@ void Player::processJump(bool jumpPressed, bool jumpHeld) {
     }
 }
 
-// 【绝对未改动：保留你精细的 AABB 水平与垂直扫掠】
+void Player::startDash() {
+    // 修复：补全了确实的大括号，并修正了 facingDirection 的命名
+    if (!isDashing && dashCooldownTimer <= 0.0f) {
+        isDashing = true;
+        dashTimer = dashDuration;
+        dashCooldownTimer = dashCooldown;
+        dashDirection = (facingDirection != 0) ? facingDirection : 1;
+        velocityY = 0.0f;
+    }
+}
+
 void Player::update(const Map& gameMap, float dt) {
     if (!alive) return;
+
+    if (dashCooldownTimer > 0.0f) {
+        dashCooldownTimer -= dt;
+    }
     if (flickerTimer > 0) flickerTimer--;
 
     TileType under = gameMap.getTileAt(x, y + 1);
     if (isGrounded && under != TileType::Wall && under != TileType::Platform) isGrounded = false;
 
-    float currentFriction = isGrounded ? groundFriction : airDrag;
-    if (moveIntent != 0) {
-        velocityX += runAccel * moveIntent * dt;
-        velocityX = std::clamp(velocityX, -maxRunSpeed, maxRunSpeed);
+    // --- 核心物理层分离 ---
+    if (isDashing) {
+        dashTimer -= dt;
+        if (dashTimer <= 0.0f) {
+            isDashing = false;
+            velocityX = 0.0f;
+        }
+        else {
+            velocityX = dashDirection * dashSpeed;
+            velocityY = 0.0f; // Dash 期间强行剥夺重力
+        }
     }
     else {
-        if (velocityX > 0) { velocityX -= currentFriction * dt; if (velocityX < 0) velocityX = 0; }
-        else if (velocityX < 0) { velocityX += currentFriction * dt; if (velocityX > 0) velocityX = 0; }
+        // 常规物理系统：加速、摩擦力、空气阻力、重力
+        float currentFriction = isGrounded ? groundFriction : airDrag;
+        if (moveIntent != 0) {
+            velocityX += runAccel * moveIntent * dt;
+            velocityX = std::clamp(velocityX, -maxRunSpeed, maxRunSpeed);
+        }
+        else {
+            if (velocityX > 0) { velocityX -= currentFriction * dt; if (velocityX < 0) velocityX = 0; }
+            else if (velocityX < 0) { velocityX += currentFriction * dt; if (velocityX > 0) velocityX = 0; }
+        }
+
+        if (!isGrounded) {
+            velocityY += gravity * dt;
+            if (velocityY > maxFallSpeed) velocityY = maxFallSpeed;
+        }
     }
 
+    // --- AABB 碰撞检测 (冲刺和走路共用这套碰撞，防止穿墙) ---
     float nextRealX = realX + velocityX * dt;
     float boxLeft = nextRealX + (1.0f - hbWidth) / 2.0f;
     float boxRight = nextRealX + (1.0f + hbWidth) / 2.0f;
@@ -100,11 +136,6 @@ void Player::update(const Map& gameMap, float dt) {
         }
     }
     realX = nextRealX;
-
-    if (!isGrounded) {
-        velocityY += gravity * dt;
-        if (velocityY > maxFallSpeed) velocityY = maxFallSpeed;
-    }
 
     float nextRealY = realY + velocityY * dt;
     Hitbox box = getHitbox();
@@ -147,7 +178,6 @@ void Player::update(const Map& gameMap, float dt) {
     x = (int)round(realX); y = (int)round(realY);
 }
 
-// 【核心缝合】：融合结构体与你的精确 AABB 攻击
 AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed) {
     AttackResult res;
     Hitbox myBox = getHitbox();
@@ -189,7 +219,6 @@ AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, boo
     return res;
 }
 
-// 【保留你 1.5 倍的递增升级机制】
 void Player::addExp(int amount) {
     currentExp += amount;
     while (currentExp >= expToNextLevel) {
@@ -208,17 +237,15 @@ void Player::addExp(int amount) {
 Enemy::Enemy(int startX, int startY, int expGive)
     : Role("爬虫", startX, startY, 40, 12),
     moveDirection(1), expReward(expGive), spawnX(startX), attackCooldown(0), moveTimer(0.0f) {
-
-    // 设置怪物的瘦身碰撞盒
-    hbWidth = 0.7f;
-    hbHeight = 0.6f;
+    hbWidth = 0.8f;
+    hbHeight = 0.5f;
 }
+
 void Enemy::update(const Map& gameMap, Player& player, float dt) {
     if (!alive) return;
     if (flickerTimer > 0) flickerTimer--;
     if (attackCooldown > 0) attackCooldown--;
 
-    // 1. 悬空坠落逻辑
     if (gameMap.getTileAt(x, y + 1) == TileType::Empty || gameMap.getTileAt(x, y + 1) == TileType::Void) {
         y++; realY = (float)y;
     }
@@ -226,23 +253,19 @@ void Enemy::update(const Map& gameMap, Player& player, float dt) {
         float distToPlayerX = abs(player.getRealX() - realX);
         float distToPlayerY = abs(player.getRealY() - realY);
 
-        // 视觉范围：水平 4 格，垂直 1.5 格
         bool isChasing = (distToPlayerX <= 4.0f && distToPlayerY <= 1.5f);
         int intentDir = 0;
 
         if (isChasing) {
-            // 【空洞骑士模式】：只要进入仇恨范围，无视出生点，死死咬住方向！
             intentDir = (player.getRealX() > realX) ? 1 : -1;
-            moveDirection = intentDir; // 同步当前朝向
+            moveDirection = intentDir;
         }
         else {
-            // 巡逻模式：在出生点左右 3 格悠闲溜达
             if (moveDirection == 1 && realX >= spawnX + 3) moveDirection = -1;
             else if (moveDirection == -1 && realX <= spawnX - 3) moveDirection = 1;
             intentDir = moveDirection;
         }
 
-        // 2. 移动执行与边缘探测
         moveTimer += dt;
         if (moveTimer >= 0.15f) {
             moveTimer = 0.0f;
@@ -251,31 +274,26 @@ void Enemy::update(const Map& gameMap, Player& player, float dt) {
             TileType nextFloor = gameMap.getTileAt(nx, y + 1);
             TileType nextWall = gameMap.getTileAt(nx, y);
 
-            // 安全判定：前面有地砖踩，且前面没有撞墙
             bool isFloorSafe = (nextFloor == TileType::Wall || nextFloor == TileType::Platform);
             bool isWallSafe = (nextWall == TileType::Empty);
 
             if (!isFloorSafe || !isWallSafe) {
-                // 遇到悬崖或死胡同了！
                 if (!isChasing) {
-                    moveDirection *= -1; // 巡逻时遇到悬崖，乖乖掉头
+                    moveDirection *= -1;
                 }
-                // 【精髓】：如果在追击状态遇到悬崖，既不前进掉下去，也不掉头逃跑
-                // 而是卡在 if 里什么也不做，表现为“站在悬崖边上死死盯着你”
             }
             else {
-                // 前方安全，迈步！
                 x = nx; realX = (float)x;
             }
         }
     }
 
-    // 3. AABB 伤害判定 (保持不变)
     if (getHitbox().intersects(player.getHitbox()) && attackCooldown <= 0) {
         player.takeDamage(baseDamage, x, gameMap);
         attackCooldown = 30;
     }
 }
+
 void Enemy::takeDamage(int damage, int sourceX, const Map& gameMap) {
     if (flickerTimer > 0) return;
     hp -= damage;
@@ -284,7 +302,6 @@ void Enemy::takeDamage(int damage, int sourceX, const Map& gameMap) {
     }
     else {
         flickerTimer = 5;
-        // 【保留你的受击后退逻辑】
         int knockbackDir = (x > sourceX) ? 1 : -1;
         TileType backWall = gameMap.getTileAt(x + knockbackDir, y);
         if (backWall != TileType::Wall) {

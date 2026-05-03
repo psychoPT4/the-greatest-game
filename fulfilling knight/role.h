@@ -6,7 +6,7 @@
 #include <cmath>
 #include "map.h"
 
-// 【新增】：战斗结果结构体
+// 战斗结果结构体
 struct AttackResult {
     bool pogoSuccess;
     int totalXp;
@@ -77,22 +77,31 @@ private:
     int mana, jumpCount;
     int moveIntent;
 
-    // 【完全保留你的动力学参数】
     float maxRunSpeed, runAccel, groundFriction, airDrag;
     float gravity, jumpForce, maxFallSpeed;
+
+    // Dash 核心物理状态
+    bool isDashing;
+    float dashSpeed;
+    float dashDuration;
+    float dashTimer;
+    float dashCooldown;
+    float dashCooldownTimer;
+    int dashDirection;
 
 public:
     Player(int startX, int startY);
     void update(const Map& gameMap, float dt) override;
-
+    void startDash();
+    bool getIsDashing() const { return isDashing; }
     void setMoveIntent(int dir);
     void processJump(bool jumpPressed, bool jumpHeld);
-    AttackResult attack(std::vector<class Enemy>& enemies, const Map& gameMap, bool downPressed); // 返回结构体
+    AttackResult attack(std::vector<class Enemy>& enemies, const Map& gameMap, bool downPressed);
 
     int getLevel() const { return level; }
     int getExp() const { return currentExp; }
     int getExpToNext() const { return expToNextLevel; }
-    void addExp(int amount); // 声明移到 cpp 中实现
+    void addExp(int amount);
 };
 
 class Enemy : public Role {
