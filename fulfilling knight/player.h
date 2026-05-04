@@ -39,6 +39,7 @@ private:
     float maxRunSpeed, runAccel, groundFriction, airDrag;
     float gravity, jumpForce, maxFallSpeed;
 
+    float ignorePlatformTimer;
     bool isDashing;
     float dashSpeed, dashDuration, dashTimer, dashCooldown, dashCooldownTimer;
     int dashDirection;
@@ -70,7 +71,7 @@ public:
     void setRealPos(float nx, float ny);
     void takeDamage(int damage, int sourceX, const Map& gameMap);
     void setMoveIntent(int dir);
-    void processJump(bool jumpPressed, bool jumpHeld);
+    void processJump(bool jumpPressed, bool jumpHeld, bool downHeld);
     void startDash();
     void update(const Map& gameMap, float dt);
     AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed);

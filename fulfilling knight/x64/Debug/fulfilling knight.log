@@ -329,25 +329,25 @@ C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Camera.h(1,1): warn
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Camera.h(1,1): warning C4828: 文件包含在偏移 0x21e 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
   (编译源文件“main.cpp”)
   
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(398,53): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(398,44): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(402,83): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(402,53): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(402,44): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(409,48): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(409,39): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(413,110): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(413,82): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(426,80): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(426,62): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(426,48): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(426,39): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(565,74): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(565,56): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(565,41): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(565,31): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,76): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(406,53): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(406,44): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(410,83): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(410,53): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(410,44): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(417,48): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(417,39): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(421,110): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(421,82): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(434,80): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(434,62): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(434,48): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(434,39): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,74): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,56): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,40): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,41): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(573,31): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(581,76): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(581,56): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(581,40): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(581,31): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
   fulfilling knight.vcxproj -> C:\vs studio cpp\project\fulfilling knight\x64\Debug\fulfilling knight.exe

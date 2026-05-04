@@ -15,7 +15,7 @@ Player::Player(int startX, int startY)
     maxRunSpeed(12.0f), runAccel(120.0f), groundFriction(160.0f), airDrag(80.0f),
     gravity(85.0f), jumpForce(-26.0f), maxFallSpeed(30.0f),
     isDashing(false), dashSpeed(40.0f), dashDuration(0.2f), dashTimer(0.0f),
-    dashCooldown(0.6f), dashCooldownTimer(0.0f), dashDirection(1), isRunningMode(false) {
+    dashCooldown(0.6f), dashCooldownTimer(0.0f), ignorePlatformTimer(0.0f), dashDirection(1), isRunningMode(false) {
 }
 
 void Player::setRealPos(float nx, float ny) {
@@ -44,8 +44,16 @@ void Player::setMoveIntent(int dir) {
     if (dir != 0) facingDirection = dir;
 }
 
-void Player::processJump(bool jumpPressed, bool jumpHeld) {
+void Player::processJump(bool jumpPressed, bool jumpHeld, bool downHeld) {
     if (jumpPressed) {
+        // 【新增机制】：按下跳跃键时，如果按住了 S 键且在地面上，触发下落
+        if (downHeld && isGrounded) {
+            ignorePlatformTimer = 0.2f; // 给予 0.2 秒的“穿透时间”
+            isGrounded = false;
+            velocityY = 10.0f; // 给一个微小的向下初速度，瞬间打破吸附
+            return; // 直接返回，不要再触发常规跳跃了
+        }
+
         if (isGrounded) { velocityY = jumpForce; isGrounded = false; jumpCount = 1; }
         else if (jumpCount < 2) { velocityY = jumpForce * 0.85f; jumpCount = 2; combatLog = "二段跳！ "; }
     }
@@ -63,6 +71,7 @@ void Player::startDash() {
 void Player::update(const Map& gameMap, float dt) {
     if (!alive) return;
     if (dashCooldownTimer > 0.0f) dashCooldownTimer -= dt;
+    if (ignorePlatformTimer > 0.0f) ignorePlatformTimer -= dt;
     if (flickerTimer > 0) flickerTimer--;
 
     // 1. 物理速度计算
@@ -125,8 +134,16 @@ void Player::update(const Map& gameMap, float dt) {
         for (int ty = currentBottomTile; ty <= nextBottomTile; ++ty) {
             TileType leftFoot = gameMap.getTileAt((int)pLeft, ty);
             TileType rightFoot = gameMap.getTileAt((int)pRight, ty);
-            if ((leftFoot == TileType::Wall || leftFoot == TileType::Platform) || (rightFoot == TileType::Wall || rightFoot == TileType::Platform)) {
+
+            // 【核心逻辑】：实体墙永远会挡住你
+            if (leftFoot == TileType::Wall || rightFoot == TileType::Wall) {
                 hitGround = true; groundTileY = ty; break;
+            }
+            // 【核心逻辑】：只有在“非穿透”状态下，平台才会被视为地面
+            if (ignorePlatformTimer <= 0.0f) {
+                if (leftFoot == TileType::Platform || rightFoot == TileType::Platform) {
+                    hitGround = true; groundTileY = ty; break;
+                }
             }
         }
         if (hitGround) {

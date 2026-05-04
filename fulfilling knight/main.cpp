@@ -190,7 +190,7 @@ int main() {
 
             bool jump = IsKeyDown(KEY_K);
             static bool lastJump = false;
-            player.processJump(jump && !lastJump, jump);
+            player.processJump(jump && !lastJump, jump, IsKeyDown(KEY_S));
             lastJump = jump;
 // 1. 触发攻击意图（平砍与下劈分流）
             if (IsKeyDown(KEY_J) && !isAttacking && !isPogoAttacking && attackCd <= 0 && !player.getIsDashing()) {
@@ -310,12 +310,20 @@ int main() {
             TileType footR = gameMap.getTileAt((int)pBox.right, (int)pBox.bottom);
 
             if (footL == TileType::Void || footR == TileType::Void || player.getY() >= 29) {
-                player.takeDamage(player.getMaxHp() / 4, player.getX(), gameMap);
-                player.setRealPos(safeX, safeY);
-                combatLog = "Fell into the void!";
+                if (!player.isFlickering()) {
+                    player.takeDamage(player.getMaxHp() / 4, player.getX(), gameMap);
+                    player.setRealPos(safeX, safeY);
+                    combatLog = "Fell into the void!";
+                }
             }
             else if (footL == TileType::SpikeUp || footR == TileType::SpikeUp) {
-                player.takeDamage(20, player.getX(), gameMap);
+                if (!player.isFlickering()) {
+                    player.takeDamage(20, player.getX(), gameMap); // 扣血并产生无敌帧
+                    combatLog = "跌入地刺！ ";
+                    hitStopTimer = 0.1f;
+                    camShakeX = 0.2f;
+                    camShakeY = 0.2f;
+                }
             }
 
             cam.update(player.getRealX(), player.getRealY(), 100, 30);
