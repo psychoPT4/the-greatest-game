@@ -4,7 +4,8 @@
 #include <vector>
 #include <math.h>
 #include "map.h"
-#include "Role.h"
+#include "Player.h"
+#include "Enemy.h"
 #include "Camera.h"
 #include "raylib.h" 
 
@@ -45,13 +46,13 @@ string combatLog = "Adventure continues...";
 float safeX, safeY;
 const int TILE_SIZE = 48;
 
-void DrawTexExact(Texture2D tex, float x, float y, float w, float h, Color tint = WHITE, bool flipX = false) {
+static void DrawTexExact(Texture2D tex, float x, float y, float w, float h, Color tint = WHITE, bool flipX = false) {
     Rectangle src = { 0, 0, flipX ? -(float)tex.width : (float)tex.width, (float)tex.height };
     Rectangle dest = { x, y, w, h };
     DrawTexturePro(tex, src, dest, { 0, 0 }, 0.0f, tint);
 }
 
-void DrawSpriteFrame(Texture2D tex, int currentFrame, int totalFrames, float x, float y, float w, float h, Color tint = WHITE, bool flipX = false) {
+static void DrawSpriteFrame(Texture2D tex, int currentFrame, int totalFrames, float x, float y, float w, float h, Color tint = WHITE, bool flipX = false) {
     float frameWidth = (float)tex.width / totalFrames;
     Rectangle src = { currentFrame * frameWidth, 0, flipX ? -frameWidth : frameWidth, (float)tex.height };
     Rectangle dest = { x, y, w, h };
@@ -63,8 +64,12 @@ int main() {
     const int screenHeight = 720;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Fulfilling Knight - Graphic Era");
+    SetConfigFlags(FLAG_VSYNC_HINT); // 【顺手修复一闪一闪】：开启垂直同步，强行锁帧对齐显示器刷新率！
     SetTargetFPS(60);
 
+    // 【新增】：创建 1280x720 的绝对虚拟画布
+    RenderTexture2D target = LoadRenderTexture(1280, 720);
+    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT); // 保持像素画锐利
     // ==========================================
     // 资源加载区
     // ==========================================
@@ -85,6 +90,11 @@ int main() {
     Texture2D wallTex = LoadTexture("wall.png");
     Texture2D platformTex = LoadTexture("platform.png");
     Texture2D spikeTex = LoadTexture("spike.png");
+    Texture2D texJumpUp = LoadTexture("knight_jump_up.png");
+    Texture2D texJumpMid = LoadTexture("knight_jump_mid.png");
+    Texture2D texFall = LoadTexture("knight_fall.png");
+    Texture2D texLand = LoadTexture("knight_land.png");
+    Texture2D texPogo = LoadTexture("knight_pogo.png");
 
     int currentLevel = 1;
     bool mapLoaded = false;
@@ -119,10 +129,12 @@ int main() {
 
     // 独立攻击状态机变量
     bool isAttacking = false;
+    bool isPogoAttacking = false; // 【新增】：独立记录是否正在下劈
     int attackFrame = 0;
     float attackAnimTimer = 0.0f;
     bool damageDealtThisSwing = false;
     const int ATTACK_TOTAL_FRAMES = 5;
+    const int POGO_TOTAL_FRAMES = 2;   // 【新增】：下劈 2 帧
     const float ATTACK_SPEED = 0.05f;
 
     // ==========================================
@@ -180,25 +192,38 @@ int main() {
             static bool lastJump = false;
             player.processJump(jump && !lastJump, jump);
             lastJump = jump;
+// 1. 触发攻击意图（平砍与下劈分流）
+            if (IsKeyDown(KEY_J) && !isAttacking && !isPogoAttacking && attackCd <= 0 && !player.getIsDashing()) {
+                // 【核心判断】：在空中且按住了 S 键，触发下劈！
+                if (!player.getIsGrounded() && IsKeyDown(KEY_S)) {
+                    isPogoAttacking = true;
+                }
+                else {
+                    isAttacking = true; // 否则触发普通平砍
+                }
 
-            // --- 严密的攻击帧同步系统 ---
-            if (IsKeyDown(KEY_J) && !isAttacking && attackCd <= 0 && !player.getIsDashing()) {
-                isAttacking = true;
                 attackFrame = 0;
                 attackAnimTimer = 0.0f;
                 damageDealtThisSwing = false;
             }
 
-            if (isAttacking) {
+            // 2. 独立推进攻击时间轴 (兼容两种攻击)
+            if (isAttacking || isPogoAttacking) {
                 if (hitStopTimer <= 0.0f) {
                     attackAnimTimer += dt;
-                    if (attackAnimTimer >= ATTACK_SPEED) {
+                    // 下劈只有两帧，为了看清楚动作，我们可以稍微把它的帧速度放慢一点点（比如 0.08 秒）
+                    float currentAnimSpeed = isPogoAttacking ? 0.12f : ATTACK_SPEED;
+
+                    if (attackAnimTimer >= currentAnimSpeed) {
                         attackFrame++;
                         attackAnimTimer = 0.0f;
                     }
                 }
 
-                if (attackFrame == 2 && !damageDealtThisSwing) {
+                // 【核心碰撞同步】：平砍在第 3 帧（下标 2）出刀，而下劈在第 2 帧（下标 1）出刀！
+                int triggerFrame = isPogoAttacking ? 1 : 2;
+
+                if (attackFrame == triggerFrame && !damageDealtThisSwing) {
                     AttackResult result = player.attack(enemies, gameMap, IsKeyDown(KEY_S));
                     if (result.totalXp > 0) player.addExp(result.totalXp);
 
@@ -217,7 +242,7 @@ int main() {
 
                         int sparkCount = GetRandomValue(45, 65);
                         for (int i = 0; i < sparkCount; i++) {
-                            HitParticle p;
+                            HitParticle p = {};
                             p.pos = { hitX, hitY };
                             p.velocity.x = GetRandomValue(-50, 50) / 1.0f;
                             p.velocity.y = GetRandomValue(-40, 5) / 1.0f;
@@ -235,9 +260,10 @@ int main() {
                     }
                     damageDealtThisSwing = true;
                 }
-
-                if (attackFrame >= ATTACK_TOTAL_FRAMES) {
+                int maxFrames = isPogoAttacking ? POGO_TOTAL_FRAMES : ATTACK_TOTAL_FRAMES;
+                if (attackFrame >= maxFrames) {
                     isAttacking = false;
+                    isPogoAttacking = false;
                     attackCd = 12;
                 }
             }
@@ -308,9 +334,8 @@ int main() {
         // ==========================================
         // 渲染绘制层
         // ==========================================
-        BeginDrawing();
+        BeginTextureMode(target);
         ClearBackground(BLACK);
-
         if (currentState == MENU) {
             Vector2 mousePos = GetMousePosition();
             float parallaxX = (screenWidth / 2.0f - mousePos.x) * 0.03f;
@@ -374,18 +399,18 @@ int main() {
                     }
                     else if (t == TileType::Platform) {
                         if (platformTex.id != 0) DrawTexExact(platformTex, renderX, renderY, TILE_SIZE, TILE_SIZE / 4.0f);
-                        else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE / 4, GRAY);
+                        else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE / 4.0f, GRAY);
                     }
                     else if (t == TileType::SpikeUp) {
                         if (spikeTex.id != 0) DrawTexExact(spikeTex, renderX, renderY, TILE_SIZE, TILE_SIZE);
-                        else DrawTriangle({ renderX + TILE_SIZE / 2, renderY }, { renderX, renderY + TILE_SIZE }, { renderX + TILE_SIZE, renderY + TILE_SIZE }, RED);
+                        else DrawTriangle({ renderX + TILE_SIZE / 2.0f, renderY }, { renderX, renderY + TILE_SIZE }, { renderX + TILE_SIZE, renderY + TILE_SIZE }, RED);
                     }
                     else if (t == TileType::Void) {
                         DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE, { 20, 10, 30, 200 });
                     }
 
                     SpawnPoint goal = gameMap.getGoalPoint();
-                    if (worldX == goal.x && worldY == goal.y) DrawCircle(renderX + TILE_SIZE / 2, renderY + TILE_SIZE / 2, TILE_SIZE / 2, YELLOW);
+                    if (worldX == goal.x && worldY == goal.y) DrawCircle(renderX + TILE_SIZE / 2.0f, renderY + TILE_SIZE / 2.0f, TILE_SIZE / 2.0f, YELLOW);
                 }
             }
 
@@ -393,9 +418,9 @@ int main() {
                 if (e.isAlive()) {
                     float renderX = (e.getRealX() - cam.x - 0.10f + camShakeX) * TILE_SIZE;
                     float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
-
+                    bool eFacingLeft = (e.getVelocityX() < 0);
                     if (crawlerTex.id != 0) {
-                        DrawTexExact(crawlerTex, renderX, renderY, 1.0f * TILE_SIZE, 0.6f * TILE_SIZE, e.isFlickering() ? RED : WHITE);
+                        DrawSpriteFrame(crawlerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY, 1.0f * TILE_SIZE, 0.6f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                     }
                     else {
                         DrawRectangle(renderX, renderY, 0.8f * TILE_SIZE, 0.5f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
@@ -419,20 +444,40 @@ int main() {
             const float FRAME_UPDATE_TIME = 0.12f;
             frameTimer += GetFrameTime();
 
+            // ==========================================
+                        // 重构后的渲染状态机 (彻底消灭越界幽灵帧)
+                        // ==========================================
             Texture2D activeTex = texStand;
-            int totalFrames = 2;
-            int frameToDraw = currentFrame;
+            int overrideFrame = -1; // -1 代表顺其自然，使用底层的 currentFrame
 
-            if (isAttacking) {
+            int totalFrames = 2;
+            // 优先级 1.1：下劈攻击 (最高优先级)
+            if (isPogoAttacking) {
+                activeTex = texPogo;
+                totalFrames = POGO_TOTAL_FRAMES;
+                overrideFrame = attackFrame;
+            }
+            // 优先级 1.2：普通攻击
+            else if (isAttacking) {
                 activeTex = texAttack;
                 totalFrames = ATTACK_TOTAL_FRAMES;
-                frameToDraw = attackFrame;
+                overrideFrame = attackFrame;
             }
+            // 优先级 2：冲刺中
             else if (player.getIsDashing()) {
                 activeTex = texRun;
                 totalFrames = 5;
-                frameToDraw = currentFrame;
             }
+            // 优先级 3：空中 (物理分层动画)
+            else if (!player.getIsGrounded()) {
+                float vy = player.getVelocityY();
+                if (vy < -5.0f) activeTex = texJumpUp;
+                else if (vy < 5.0f) activeTex = texJumpMid;
+                else activeTex = texFall;
+                totalFrames = 1;
+                overrideFrame = 0; // 空中姿态死锁在第 0 帧
+            }
+            // 优先级 4：地面移动
             else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_D)) {
                 if (IsKeyDown(KEY_LEFT_SHIFT)) {
                     activeTex = texRun;
@@ -442,14 +487,14 @@ int main() {
                     activeTex = texWalk;
                     totalFrames = 3;
                 }
-                frameToDraw = currentFrame;
             }
+            // 优先级 5：待机
             else {
                 activeTex = texStand;
-                totalFrames = 2;
-                frameToDraw = currentFrame;
+                totalFrames = 2; // 【注】：确认你的 stand 图片包含两帧
             }
 
+            // --- 换图安全锁：一旦贴图改变，立刻重置常规帧数 ---
             static unsigned int lastTexId = activeTex.id;
             if (activeTex.id != lastTexId) {
                 currentFrame = 0;
@@ -457,57 +502,68 @@ int main() {
                 lastTexId = activeTex.id;
             }
 
-            // 只有不在攻击时，才推进日常帧数
-            if (!isAttacking && frameTimer >= FRAME_UPDATE_TIME) {
-                currentFrame = (currentFrame + 1) % totalFrames;
-                frameTimer = 0.0f;
+            // --- 动态赋予动画时间流速 ---
+            float currentFrameTime = 0.12f;
+            if (activeTex.id == texStand.id) currentFrameTime = 0.40f;
+            else if (activeTex.id == texRun.id) currentFrameTime = 0.08f;
+            else if (activeTex.id == texWalk.id) currentFrameTime = 0.16f;
+
+            // --- 推进常规帧数 ---
+            if (overrideFrame == -1) {
+                frameTimer += GetFrameTime();
+                if (frameTimer >= currentFrameTime) {
+                    currentFrame = (currentFrame + 1) % totalFrames;
+                    frameTimer = 0.0f;
+                }
             }
+
+            // --- 终极绘制抉择与越界保护 ---
+            int frameToDraw = (overrideFrame != -1) ? overrideFrame : currentFrame;
+            if (frameToDraw >= totalFrames) frameToDraw = 0;
+
             // ==========================================
-            // 【核心】：残影的生成逻辑 (冲刺强残影 + 奔跑弱残影)
+            // 【找回的拼图】：残影的生成逻辑与绘制
             // ==========================================
 
-            // 1. 冲刺状态：高频、高亮、滞留时间长的冰蓝色残影
+            // 1. 冲刺强残影
             if (player.getIsDashing()) {
                 static float dashTrailTimer = 0.0f;
                 dashTrailTimer += GetFrameTime();
-                if (dashTrailTimer >= 0.04f) { // 每 0.04 秒克隆一次
+                if (dashTrailTimer >= 0.04f) {
                     dashTrailTimer = 0.0f;
                     DashTrail trail = { activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.35f, 0.35f };
                     dashTrails.push_back(trail);
                 }
             }
-            // 2. 【新增】奔跑状态：低频、极淡、瞬间消散的流线弱残影
-            // 只有当主动贴图是奔跑态 (texRun)，且没有在挥刀攻击时才触发
-            else if (activeTex.id == texRun.id && !isAttacking) {
+            // 2. 奔跑弱残影 (排除了普通攻击和下劈)
+            else if (activeTex.id == texRun.id && !isAttacking && !isPogoAttacking) {
                 static float runTrailTimer = 0.0f;
                 runTrailTimer += GetFrameTime();
-                if (runTrailTimer >= 0.06f) { // 频率减半，每 0.06 秒克隆一次
+                if (runTrailTimer >= 0.06f) {
                     runTrailTimer = 0.0f;
-
-                    // 【数值魔法】：寿命极短(0.15)，但分母极大(0.60)
-                    // 一出生透明度就只有 200*(0.15/0.60) = 50，制造出一种若隐若现的剥离感
                     DashTrail trail = { activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.25f, 0.4f };
                     dashTrails.push_back(trail);
                 }
             }
+
+            // 3. 画出所有残影（压在实体下面）
             for (const auto& trail : dashTrails) {
-                // 将记录的“世界坐标”转换回“屏幕渲染坐标”（别忘了加上震动偏移）
                 float tRenderX = (trail.worldX - cam.x - 0.25f + camShakeX) * TILE_SIZE;
                 float tRenderY = (trail.worldY - cam.y + camShakeY) * TILE_SIZE;
-
-                // 计算逐渐消散的透明度 Alpha
                 unsigned char alpha = (unsigned char)(200 * (trail.life / trail.maxLife));
-                Color trailColor = { 50, 150, 255, alpha }; // 冰蓝色的幽灵特效
-
+                Color trailColor = { 50, 150, 255, alpha };
                 DrawSpriteFrame(trail.tex, trail.frameIndex, trail.totalFrames, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
             }
+
+            // ==========================================
+            // --- 最终绘制 (主角本体) ---
+            // ==========================================
             if (activeTex.id != 0) {
                 DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, facingLeft);
             }
             else {
                 DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
             }
-
             // 绘制火花特效
             for (const auto& p : hitParticles) {
                 float renderX = (p.pos.x - cam.x + camShakeX) * TILE_SIZE;
@@ -524,6 +580,26 @@ int main() {
             DrawTextEx(myFont, "GAME OVER", { 280, 150 }, 40, 1.0f, RED);
             DrawTextEx(myFont, "The knight has fallen...", { 280, 220 }, 20, 1.0f, LIGHTGRAY);
         }
+        EndTextureMode();
+
+        // ==========================================
+        // 第二阶段：将虚拟画布投射到真实屏幕上 (自动居中、等比缩放)
+        // ==========================================
+        BeginDrawing();
+        ClearBackground(BLACK); // 屏幕外围的黑边填充
+
+        // 计算最大可用的缩放比例
+        float scale = fmin((float)GetScreenWidth() / 1280.0f, (float)GetScreenHeight() / 720.0f);
+
+        // 计算居中偏移量
+        float offsetX = (GetScreenWidth() - (1280.0f * scale)) * 0.5f;
+        float offsetY = (GetScreenHeight() - (720.0f * scale)) * 0.5f;
+
+        // 将虚拟画布贴到屏幕上 (注意 Raylib 的 RenderTexture 在 Y 轴是倒置的，所以高度要给负数)
+        Rectangle sourceRec = { 0.0f, 0.0f, (float)target.texture.width, (float)-target.texture.height };
+        Rectangle destRec = { offsetX, offsetY, 1280.0f * scale, 720.0f * scale };
+
+        DrawTexturePro(target.texture, sourceRec, destRec, { 0, 0 }, 0.0f, WHITE);
 
         EndDrawing();
     }
