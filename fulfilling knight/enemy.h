@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include "map.h"
-#include "Player.h" // ½èÓÃ Hitbox
+#include "Player.h" 
 
 class Enemy {
 private:
@@ -13,17 +13,19 @@ private:
     bool alive;
     int flickerTimer;
 
-    int moveDirection, expReward, attackCooldown;
+    int enemyType; // 0: ÅÀ³æ, 1: ·É³æ
+    float spawnY;  // ¼ÇÂ¼³öÉú¸ß¶È
+    int moveDirection, attackCooldown;
     float crawlerSpeed;
     int spawnX;
 
     int currentFrame;
     float animTimer;
     int totalFrames;
-    int aiState = 0;       // 0:Ñ²Âß, 1:±©Å­Ç°Ò¡, 2:×·»÷, 3:×²Ç½ÀäÈ´/ÃÔÃ£
-    float stateTimer = 0.0f; // ×´Ì¬¼ÆÊ±Æ÷
+    int aiState = 0;
+    float stateTimer = 0.0f;
 public:
-    Enemy(int startX, int startY, int expGive);
+    Enemy(int startX, int startY, int type);
 
     int getX() const { return x; }
     int getY() const { return y; }
@@ -31,7 +33,6 @@ public:
     float getRealY() const { return realY; }
     bool isAlive() const { return alive; }
     bool isFlickering() const { return flickerTimer > 0; }
-    int getExpReward() const { return expReward; }
     int getVelocityX() const { return moveDirection; }
     int getCurrentFrame() const { return currentFrame; }
     int getTotalFrames() const { return totalFrames; }
@@ -40,7 +41,7 @@ public:
         return { realX + (1.0f - hbWidth) / 2.0f, realX + (1.0f + hbWidth) / 2.0f,
                  realY + 1.0f - hbHeight, realY + 1.0f };
     }
-
+    std::string getName() const { return name; }
     void update(const Map& gameMap, Player& player, float dt);
     void takeDamage(int damage, int sourceX, const Map& gameMap);
 };

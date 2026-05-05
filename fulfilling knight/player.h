@@ -2,8 +2,9 @@
 #include <string>
 #include <vector>
 #include "map.h"
+
 enum MagicAction { MAGIC_NONE, CAST_SPELL, HEALED };
-// 碰撞盒定义
+
 struct Hitbox {
     float left, right, top, bottom;
     bool intersects(const Hitbox& other) const {
@@ -11,6 +12,7 @@ struct Hitbox {
             top <= other.bottom && bottom >= other.top;
     }
 };
+
 struct Projectile {
     float x, y;
     float speed;
@@ -23,15 +25,13 @@ struct Projectile {
     }
 };
 
-// 攻击结果
 struct AttackResult {
     bool pogoSuccess;
-    int totalXp;
-    bool hitSomething;
-    AttackResult() : pogoSuccess(false), totalXp(0), hitSomething(false) {}
+    bool hitSomething; // 移除了 XP 变量
+    AttackResult() : pogoSuccess(false), hitSomething(false) {}
 };
 
-class Enemy; // 前向声明，防止交叉引用
+class Enemy;
 
 class Player {
 private:
@@ -48,7 +48,7 @@ private:
     float stamina;
     float maxStamina;
 
-    int level, currentExp, expToNextLevel, mana, maxMana,jumpCount, moveIntent;
+    int mana, maxMana, jumpCount, moveIntent; // 移除了 level, currentExp, expToNextLevel
     float maxRunSpeed, runAccel, groundFriction, airDrag;
     float gravity, jumpForce, maxFallSpeed;
 
@@ -60,10 +60,9 @@ private:
 
     std::vector<Projectile> projectiles;
 
-    // 【新增】：凝聚系统 (Focus)
     float focusTimer = 0.0f;
     bool isFocusing = false;
-    float healFlashTimer = 0.0f; // 耀眼的白光计时器
+    float healFlashTimer = 0.0f;
 
 public:
     Player(int startX, int startY);
@@ -79,13 +78,11 @@ public:
     bool getIsGrounded() const { return isGrounded; }
     float getVelocityY() const { return velocityY; }
     bool getIsDashing() const { return isDashing; }
-    int getLevel() const { return level; }
-    int getExp() const { return currentExp; }
-    int getExpToNext() const { return expToNextLevel; }
     int getMana() const { return mana; }
     int getMaxMana() const { return maxMana; }
     float getStamina() const { return stamina; }
     float getMaxStamina() const { return maxStamina; }
+    int getFacingDirection() const { return facingDirection; }
     const std::vector<Projectile>& getProjectiles() const { return projectiles; }
     Hitbox getHitbox() const {
         return { realX + (1.0f - hbWidth) / 2.0f, realX + (1.0f + hbWidth) / 2.0f,
@@ -99,18 +96,14 @@ public:
     void update(const Map& gameMap, float dt);
     AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed);
     void setRunningMode(bool run) { isRunningMode = run; }
-    void addExp(int amount);
-    // 增加灵魂（打铁回蓝）
+
     void addMana(int amount) {
         mana += amount;
         if (mana > maxMana) mana = maxMana;
     }
-    void castVengefulSpirit();
-    void updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt);
 
-    // 【修改原有的 Dash 接口】：让它带上体力判断
+    void updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt);
     bool tryDash();
-    // 消耗灵魂（释放冲击波）
     bool consumeMana(int amount) {
         if (mana >= amount) {
             mana -= amount;
@@ -120,7 +113,5 @@ public:
     }
     bool getIsFocusing() const { return isFocusing; }
     float getHealFlashTimer() const { return healFlashTimer; }
-
-    // 【终极魔法分配器】
-    MagicAction processMagic(bool magicHeld, bool magicReleased,  float dt);
+    MagicAction processMagic(bool magicHeld, bool magicReleased, float dt);
 };

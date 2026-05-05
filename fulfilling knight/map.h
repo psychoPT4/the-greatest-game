@@ -17,7 +17,7 @@ enum class TileType {
     SpikeLeft = 6,
     SpikeRight = 7,
     SpawnCrawler = 8, // 怪物：爬虫怪出生点
-    SpawnBoss = 9,    // 怪物：Boss 出生点
+    SpawnFlyer = 9,   // 🌟 新增：飞虫出生点
     SpawnPlayer = 10, // 主角出生点
     LevelGoal = 11    // 关卡终点传送门
 };

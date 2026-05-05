@@ -10,14 +10,12 @@
 #include "raylib.h" 
 #include <fstream>
 #include <sstream>
-#include <iostream>
 
 using namespace std;
 
 enum GameState { MENU, PLAYING, GAME_OVER };
 GameState currentState = MENU;
 
-// 菜单孢子粒子
 struct SporeParticle {
     Vector2 pos;
     Vector2 velocity;
@@ -25,25 +23,33 @@ struct SporeParticle {
     unsigned char alpha;
 };
 
-// 战斗受击火花粒子
 struct HitParticle {
-    Vector2 pos;       // 物理逻辑坐标
-    Vector2 velocity;  // 弹射速度
-    float life;        // 当前剩余寿命
-    float maxLife;     // 初始总寿命
-    Color color;       // 粒子颜色
-    float size;        // 粒子大小
+    Vector2 pos;
+    Vector2 velocity;
+    float life;
+    float maxLife;
+    Color color;
+    float size;
 };
 
 struct DashTrail {
-    Texture2D tex;      // 记录残影生成时，主角用的是哪张贴图
-    int frameIndex;     // 记录当时切到了第几帧
-    int totalFrames;    // 总帧数
-    float worldX;       // 必须记录世界坐标，否则残影会跟着屏幕一起跑！
+    Texture2D tex;
+    int frameIndex;
+    int totalFrames;
+    float worldX;
     float worldY;
-    bool facingLeft;    // 记录当时的朝向
-    float life;         // 剩余寿命
-    float maxLife;      // 初始总寿命
+    bool facingLeft;
+    float life;
+    float maxLife;
+};
+
+// 🌟 新增：独立存活的命中十字爆特效
+struct HitImpactVFX {
+    float x;
+    float y;
+    int frame;
+    float timer;
+    float rotation; // 每次打中随机旋转一个角度，张力拉满！
 };
 
 string combatLog = "Adventure continues...";
@@ -73,15 +79,15 @@ int main() {
     SetTargetFPS(60);
 
     std::vector<Music> bgms;
-    bgms.push_back(LoadMusicStream("bgm0.mp3")); // 下标 0: 主菜单
-    bgms.push_back(LoadMusicStream("bgm1.mp3")); // 下标 1: 第一关 (平原)
-    bgms.push_back(LoadMusicStream("bgm2.mp3")); // 下标 2: 第二关 (洞穴)
+    bgms.push_back(LoadMusicStream("bgm0.mp3"));
+    bgms.push_back(LoadMusicStream("bgm1.mp3"));
+    bgms.push_back(LoadMusicStream("bgm2.mp3"));
     for (auto& m : bgms) SetMusicVolume(m, 0.4f);
-    SetMusicVolume(bgms[0], 0.5f); // 菜单音量稍微大一点
+    SetMusicVolume(bgms[0], 0.5f);
     SetMusicVolume(bgms[1], 0.6f);
 
-    int currentBgmIndex = 0; // 当前正在播放的音轨下标
-    PlayMusicStream(bgms[currentBgmIndex]); // 游戏启动，先放菜单音乐
+    int currentBgmIndex = 0;
+    PlayMusicStream(bgms[currentBgmIndex]);
 
     Sound sfxSwing = LoadSound("swing.wav");
     Sound sfxHit = LoadSound("hit.wav");
@@ -95,9 +101,6 @@ int main() {
     RenderTexture2D target = LoadRenderTexture(1280, 720);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
-    // ==========================================
-    // 资源加载区
-    // ==========================================
     int codepointCount = (127 - 32) + (0x9FA5 - 0x4E00 + 1);
     int* codepoints = new int[codepointCount];
     int index = 0;
@@ -112,6 +115,7 @@ int main() {
     Texture2D texRun = LoadTexture("knight_run.png");
     Texture2D texAttack = LoadTexture("knight_attack.png");
     Texture2D crawlerTex = LoadTexture("crawler.png");
+    Texture2D flyerTex = LoadTexture("flyer.png"); // 飞虫图
     Texture2D wallTex = LoadTexture("wall.png");
     Texture2D platformTex = LoadTexture("platform.png");
     Texture2D spikeTex = LoadTexture("spike.png");
@@ -123,6 +127,14 @@ int main() {
     Texture2D bgFar = LoadTexture("bg_far.png");
     Texture2D texCast = LoadTexture("cast_spell.png");
     Texture2D texHeal = LoadTexture("heal.png");
+
+    // 🌟 加载 4 帧刀光散图
+    Texture2D slashTex[4];
+    for (int i = 0; i < 4; i++) slashTex[i] = LoadTexture(("slash" + to_string(i) + ".png").c_str());
+
+    // 🌟 加载 4 帧命中十字爆散图
+    Texture2D hitImpactTex[4];
+    for (int i = 0; i < 4; i++) hitImpactTex[i] = LoadTexture(("hit_impact" + to_string(i) + ".png").c_str());
 
     float bgScrollSpeed = 0.15f;
     int currentLevel = 1;
@@ -147,8 +159,11 @@ int main() {
             (unsigned char)GetRandomValue(50, 200)
             });
     }
+
     vector<DashTrail> dashTrails;
     vector<HitParticle> hitParticles;
+    vector<HitImpactVFX> activeImpacts; // 🌟 十字爆生命周期管理池
+
     float hitStopTimer = 0.0f;
     float camShakeX = 0.0f;
     float camShakeY = 0.0f;
@@ -162,16 +177,13 @@ int main() {
     const int POGO_TOTAL_FRAMES = 2;
     const float ATTACK_SPEED = 0.05f;
     float castVisualTimer = 0.0f;
-    // ==========================================
-    // 游戏主循环
-    // ==========================================
+
     while (!WindowShouldClose()) {
 
         UpdateMusicStream(bgms[currentBgmIndex]);
         float dt = GetFrameTime();
         if (dt > 0.05f) dt = 0.05f;
 
-        // --- 2. 逻辑更新区 ---
         if (currentState == MENU) {
             Vector2 mousePos = GetMousePosition();
             for (auto& p : particles) {
@@ -190,7 +202,7 @@ int main() {
             if (CheckCollisionPointRec(mousePos, btnStart) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 currentState = PLAYING; mapLoaded = false;
                 StopMusicStream(bgms[currentBgmIndex]);
-                currentBgmIndex = currentLevel; // 直接把关卡号当成切歌指令！
+                currentBgmIndex = currentLevel;
                 PlayMusicStream(bgms[currentBgmIndex]);
             }
             if (CheckCollisionPointRec(mousePos, btnExit) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
@@ -199,7 +211,7 @@ int main() {
             if (IsKeyPressed(KEY_ENTER)) {
                 currentState = PLAYING; mapLoaded = false;
                 StopMusicStream(bgms[currentBgmIndex]);
-                currentBgmIndex = currentLevel; // 直接把关卡号当成切歌指令！
+                currentBgmIndex = currentLevel;
                 PlayMusicStream(bgms[currentBgmIndex]);
             }
         }
@@ -212,32 +224,30 @@ int main() {
 
                 enemies.clear();
                 for (const auto& s : gameMap.getEnemySpawns()) {
-                    if (s.type == 8) enemies.emplace_back(s.x, s.y, 40);
+                    if (s.type == 8) enemies.emplace_back(s.x, s.y, 0);
+                    else if (s.type == 9) enemies.emplace_back(s.x, s.y, 1);
                 }
                 mapLoaded = true;
             }
 
-            static float castVisualTimer = 0.0f;
             if (castVisualTimer > 0.0f) castVisualTimer -= dt;
 
             MagicAction mAct = player.processMagic(IsKeyDown(KEY_I), IsKeyReleased(KEY_I), dt);
 
             if (mAct == CAST_SPELL) {
-                PlaySound(sfxCast); // 如果你有施法音效最好，这里暂借挥剑音效
-                camShakeX = 0.4f;    // 后坐力
+                PlaySound(sfxCast);
+                camShakeX = 0.4f;
                 castVisualTimer = 0.25f;
-                combatLog = "灵魂冲击";
+                combatLog = "灵魂冲击！";
             }
             else if (mAct == HEALED) {
-                PlaySound(sfxHeal);  // 暂借落地音效当回血音效
-                camShakeY = 0.1f;    // 能量灌注的微小震动
+                PlaySound(sfxHeal);
+                camShakeY = 0.1f;
                 combatLog = "回复生命！";
             }
 
-            // 在物理更新区调用：
             player.updateProjectiles(enemies, gameMap, dt);
 
-            // 按下 L 键冲刺，改用 tryDash：
             if (IsKeyPressed(KEY_L)) {
                 if (player.tryDash()) PlaySound(sfxDash);
             }
@@ -296,7 +306,6 @@ int main() {
 
                 if (attackFrame == triggerFrame && !damageDealtThisSwing) {
                     AttackResult result = player.attack(enemies, gameMap, IsKeyDown(KEY_S));
-                    if (result.totalXp > 0) player.addExp(result.totalXp);
 
                     if (result.hitSomething || result.pogoSuccess) {
                         PlaySound(sfxHit);
@@ -311,6 +320,9 @@ int main() {
                             hitY += 0.5f;
                             hitX += IsKeyDown(KEY_A) ? -0.6f : 0.6f;
                         }
+
+                        // 🌟 触发十字爆特效！把它种在命中的坐标上
+                        activeImpacts.push_back({ hitX, hitY, 0, 0.0f, (float)GetRandomValue(0, 360) });
 
                         int sparkCount = GetRandomValue(45, 65);
                         for (int i = 0; i < sparkCount; i++) {
@@ -388,18 +400,17 @@ int main() {
 
             if (footL == TileType::Void || footR == TileType::Void || player.getY() >= gameMap.getHeight() - 1) {
                 if (!player.isFlickering()) {
-                    player.takeDamage(player.getMaxHp() / 4, player.getX(), gameMap);
+                    player.takeDamage(25, player.getX(), gameMap);
                     player.setRealPos(safeX, safeY);
-                    combatLog = "Fell into the void!";
+                    combatLog = "吞噬于虚空！";
                 }
             }
             else if (footL == TileType::SpikeUp || footR == TileType::SpikeUp) {
                 if (!player.isFlickering()) {
-                    player.takeDamage(20, player.getX(), gameMap);
+                    player.takeDamage(25, player.getX(), gameMap);
                     combatLog = "跌入地刺！ ";
                     hitStopTimer = 0.1f;
-                    camShakeX = 0.2f;
-                    camShakeY = 0.2f;
+                    camShakeX = 0.2f; camShakeY = 0.2f;
                 }
             }
 
@@ -409,9 +420,7 @@ int main() {
             if (player.getX() == goal.x && player.getY() == goal.y) {
                 currentLevel++;
                 mapLoaded = false;
-                // 【新增】：过关无缝切歌
                 StopMusicStream(bgms[currentBgmIndex]);
-                // 防止越界保护：如果还没准备 bgm3，就继续循环播最后一首
                 currentBgmIndex = (currentLevel < bgms.size()) ? currentLevel : bgms.size() - 1;
                 PlayMusicStream(bgms[currentBgmIndex]);
             }
@@ -419,15 +428,10 @@ int main() {
             if (!player.isAlive()) {
                 currentState = GAME_OVER;
             }
-        } // 结束 PLAYING 逻辑判断
+        }
 
-        // ==========================================
-        // --- 3. 极其严格的渲染管线 (汉堡包结构) ---
-        // ==========================================
-
-        // 【第一层：画到虚拟画布】
         BeginTextureMode(target);
-        ClearBackground({ 20, 20, 30, 255 }); // 游戏底色
+        ClearBackground({ 20, 20, 30, 255 });
 
         if (currentState == MENU) {
             Vector2 mousePos = GetMousePosition();
@@ -470,12 +474,11 @@ int main() {
         }
         else if (currentState == PLAYING) {
 
-            // 🌟 【绝对的最底层】：画多层视差大背景
             if (!gameMap.getBgLayers().empty()) {
                 float camTargetX = player.getRealX();
                 for (const auto& layer : gameMap.getBgLayers()) {
                     float parallaxOffsetX = -camTargetX * layer.scrollSpeed;
-                    float scaleY = 720.0f / layer.tex.height; // 强行拉伸填满屏幕高度
+                    float scaleY = 720.0f / layer.tex.height;
                     float scaleX = scaleY;
                     float scaledWidth = layer.tex.width * scaleX;
                     float bgWrapX = fmod(parallaxOffsetX, scaledWidth);
@@ -486,7 +489,6 @@ int main() {
                 }
             }
 
-            // 🌟 【倒数第二层】：画物理世界（地块、地刺、平台）
             int viewW = screenWidth / TILE_SIZE + 2;
             int viewH = screenHeight / TILE_SIZE + 2;
 
@@ -502,14 +504,13 @@ int main() {
                     if (t == TileType::Wall) {
                         TileType tileAbove = gameMap.getTileAt(worldX, worldY - 1);
 
-                        // 【核心修复】：只要头顶不是墙，且头顶不是地刺，才长草！
                         if (tileAbove != TileType::Wall && tileAbove != TileType::SpikeUp) {
-                            Texture2D tex = gameMap.getTexGroundTop(); // 草地
+                            Texture2D tex = gameMap.getTexGroundTop();
                             if (tex.id != 0) DrawTexExact(tex, renderX, renderY, TILE_SIZE, TILE_SIZE);
                             else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE, GREEN);
                         }
                         else {
-                            Texture2D tex = gameMap.getTexGroundDeep(); // 泥土
+                            Texture2D tex = gameMap.getTexGroundDeep();
                             if (tex.id != 0) DrawTexExact(tex, renderX, renderY, TILE_SIZE, TILE_SIZE);
                             else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE, DARKBROWN);
                         }
@@ -519,26 +520,21 @@ int main() {
                         else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE / 4.0f, GRAY);
                     }
                     else if (t == TileType::SpikeUp) {
-                        // 【核心修复】：删掉垫底的泥土，只画你带有留白的地刺贴图！
                         if (spikeTex.id != 0) DrawTexExact(spikeTex, renderX, renderY, TILE_SIZE, TILE_SIZE);
                         else DrawTriangle({ renderX + TILE_SIZE / 2.0f, renderY }, { renderX, renderY + TILE_SIZE }, { renderX + TILE_SIZE, renderY + TILE_SIZE }, RED);
                     }
                     else if (t == TileType::Void) {
-                        // 放弃纯色块，改用从“深紫/透明”到“全黑”的垂直渐变
-                        // 这样看起来就像地表之下的一片虚无迷雾
-                        Color voidTop = { 20, 10, 30, 100 }; // 半透明深紫色
-                        Color voidBottom = { 0, 0, 0, 255 };  // 纯黑
+                        Color voidTop = { 20, 10, 30, 100 };
+                        Color voidBottom = { 0, 0, 0, 255 };
                         DrawRectangleGradientV(renderX, renderY, TILE_SIZE, TILE_SIZE, voidTop, voidBottom);
                     }
                     SpawnPoint goal = gameMap.getGoalPoint();
                     if (worldX == goal.x && worldY == goal.y) {
                         float pulse = (sin(GetTime() * 5.0f) + 1.0f) * 0.5f;
-                        // 绘制一个带光晕的核心
                         Color portalColor = { 255, 255, 150, (unsigned char)(150 + 105 * pulse) };
-                        float radius = (0.35f + 0.1f * pulse) * TILE_SIZE; // 半径随呼吸跳动
+                        float radius = (0.35f + 0.1f * pulse) * TILE_SIZE;
 
                         DrawCircle(renderX + TILE_SIZE / 2.0f, renderY + TILE_SIZE / 2.0f, radius, portalColor);
-                        // 外围加一圈淡淡的亮边线
                         DrawCircleLines(renderX + TILE_SIZE / 2.0f, renderY + TILE_SIZE / 2.0f, radius + 2, YELLOW);
                     }
                 }
@@ -552,13 +548,16 @@ int main() {
                 float tailStart = p.facingDir == 1 ? pRenderX - tailLength : pRenderX;
                 DrawRectangle(tailStart, pRenderY - 10, tailLength, 20, { 200, 220, 255, 100 });
             }
-            // 画敌人
             for (const auto& e : enemies) {
                 if (e.isAlive()) {
                     float renderX = (e.getRealX() - cam.x - 0.10f + camShakeX) * TILE_SIZE;
                     float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
                     bool eFacingLeft = (e.getVelocityX() < 0);
-                    if (crawlerTex.id != 0) {
+
+                    if (e.getName() == "Flyer" && flyerTex.id != 0) {
+                        DrawSpriteFrame(flyerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY - 10.0f, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                    }
+                    else if (crawlerTex.id != 0) {
                         DrawSpriteFrame(crawlerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY, 1.0f * TILE_SIZE, 0.6f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                     }
                     else {
@@ -567,22 +566,14 @@ int main() {
                 }
             }
 
-            // 决定主角用哪张贴图
             float pRenderX = (player.getRealX() - cam.x - 0.25f + camShakeX) * TILE_SIZE;
             float pRenderY = (player.getRealY() - cam.y + camShakeY) * TILE_SIZE;
             static bool facingLeft = false;
-            if (!player.getIsDashing() && !isAttacking) {
-                if (IsKeyDown(KEY_A)) facingLeft = true;
-                else if (IsKeyDown(KEY_D)) facingLeft = false;
-            }
 
             static float frameTimer = 0.0f;
             static int currentFrame = 0;
             frameTimer += GetFrameTime();
 
-            // ==========================================
-                        // 🌟 决定主角用哪张贴图 (整合了单帧特效开关)
-                        // ==========================================
             static bool isFacingLeftNow = false;
             if (!player.getIsDashing() && !isAttacking) {
                 if (IsKeyDown(KEY_A)) isFacingLeftNow = true;
@@ -591,9 +582,8 @@ int main() {
             Texture2D activeTex = texStand;
             int overrideFrame = -1;
             int totalFrames = 2;
-            bool useSpecialSingleFrame = false; // 🌟 新增的开关：是否触发单帧特效模式
+            bool useSpecialSingleFrame = false;
 
-            // 优先级判定
             if (player.getIsFocusing()) {
                 activeTex = texHeal; totalFrames = 1; overrideFrame = 0; useSpecialSingleFrame = true;
             }
@@ -623,7 +613,7 @@ int main() {
                 lastTexId = activeTex.id;
             }
 
-           float currentFrameTime = 0.12f;
+            float currentFrameTime = 0.12f;
             if (activeTex.id == texStand.id) currentFrameTime = 0.40f;
             else if (activeTex.id == texRun.id) currentFrameTime = 0.08f;
             else if (activeTex.id == texWalk.id) currentFrameTime = 0.16f;
@@ -638,11 +628,10 @@ int main() {
             int frameToDraw = (overrideFrame != -1) ? overrideFrame : currentFrame;
             if (frameToDraw >= totalFrames) frameToDraw = 0;
             if (player.getIsFocusing()) {
-                // 画一个正在收缩的能量场
                 float focusPulse = (sin(GetTime() * 15.0f) + 1.0f) * 0.5f;
                 DrawCircleLines(pRenderX + TILE_SIZE / 2, pRenderY + TILE_SIZE / 2, TILE_SIZE * focusPulse, { 255, 255, 255, 150 });
             }
-            // 残影逻辑生成
+
             if (player.getIsDashing()) {
                 static float dashTrailTimer = 0.0f;
                 dashTrailTimer += GetFrameTime();
@@ -660,7 +649,6 @@ int main() {
                 }
             }
 
-            // 画残影
             for (const auto& trail : dashTrails) {
                 float tRenderX = (trail.worldX - cam.x - 0.25f + camShakeX) * TILE_SIZE;
                 float tRenderY = (trail.worldY - cam.y + camShakeY) * TILE_SIZE;
@@ -668,37 +656,119 @@ int main() {
                 Color trailColor = { 50, 150, 255, alpha };
                 DrawSpriteFrame(trail.tex, trail.frameIndex, trail.totalFrames, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
             }
-            if (useSpecialSingleFrame && activeTex.id != 0) {
-                // 1. 代码抖动：利用 sin 函数制造高频微小缩放，模拟能量的不稳定
-                float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
 
-                // 2. 放大绘制：因为这两个素材带有特效框，直接画 48x48 可能会显得人物太小
+            if (useSpecialSingleFrame && activeTex.id != 0) {
+                float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
                 float renderW = TILE_SIZE * 1.5f * energyShake;
                 float renderH = TILE_SIZE * 1.5f * energyShake;
-                float offsetX = pRenderX - (renderW - TILE_SIZE) / 2.0f; // 居中偏移
+                float offsetX = pRenderX - (renderW - TILE_SIZE) / 2.0f;
                 float offsetY = pRenderY - (renderH - TILE_SIZE) / 2.0f;
 
-                // 画出带抖动的单帧
                 DrawTexExact(activeTex, offsetX, offsetY, renderW, renderH, WHITE, isFacingLeftNow);
 
-                // 3. 叠加光晕：根据是加血还是施法，在背后铺垫一层发光圆环
                 Color auraColor = (activeTex.id == texHeal.id) ? Color{ 255, 255, 255, 80 } : Color{ 50, 150, 255, 80 };
                 DrawCircle((int)(pRenderX + TILE_SIZE / 2.0f), (int)(pRenderY + TILE_SIZE / 2.0f), TILE_SIZE * 1.2f, auraColor);
             }
             else if (activeTex.id != 0) {
-                // 正常的逐帧动画绘制 (比如跑步、平砍)
-                DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, isFacingLeftNow);
+                DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, player.getFacingDirection() == -1);
             }
             else {
-                // 没有贴图时的兜底蓝色方块
                 DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
             }
+
+            // ==========================================
+            // ⚔️ 终极刀光渲染管线 (Slash VFX)
+            // ==========================================
+// ==========================================
+            // ⚔️ 终极刀光渲染管线 (Slash VFX)
+            // ==========================================
+            if (isAttacking || isPogoAttacking) {
+                int vfxFrame = attackFrame;
+
+                if (vfxFrame >= 0 && vfxFrame < 4) {
+                    Texture2D currentSlash = slashTex[vfxFrame];
+                    if (currentSlash.id != 0) {
+                        BeginBlendMode(BLEND_ADDITIVE);
+
+                        float slashW = TILE_SIZE * 2.5f;
+                        float slashH = TILE_SIZE * 1.5f;
+
+                        Rectangle srcRec = { 0.0f, 0.0f, (float)currentSlash.width, (float)currentSlash.height };
+                        Rectangle destRec;
+                        Vector2 origin = { slashW / 2.0f, slashH / 2.0f };
+
+                        // 🌟 核心修复 1：绝对物理朝向！从底层获取骑士真实方向（1为右，-1为左）
+                        int pDir = player.getFacingDirection();
+
+                        // 🌟 核心修复 2：原图是“U”型，向右砍必须顺时针转 90 度变成 “)”
+                        float baseRotation = -90.0f; // 如果还是歪的，就改这里（比如 45.0f 或 135.0f）
+                        float finalRotation = baseRotation;
+
+                        if (isPogoAttacking) {
+                            destRec = { pRenderX + TILE_SIZE / 2.0f, pRenderY + TILE_SIZE * 1.2f, slashW, slashH };
+                            finalRotation += 90.0f;
+                            destRec.height *= 0.8f;
+                        }
+                        else {
+                            // 严格根据物理朝向，决定刀光画在身前多远
+                            float offsetX = pDir * TILE_SIZE * 1.2f;
+                            destRec = { pRenderX + TILE_SIZE / 2.0f + offsetX, pRenderY + TILE_SIZE / 2.0f, slashW, slashH };
+
+                            if (pDir == -1) { // 如果朝左
+                                srcRec.width *= -1.0f;         // 水平镜像图片
+                                finalRotation = -baseRotation; // 角度取反
+                            }
+                        }
+
+                        DrawTexturePro(currentSlash, srcRec, destRec, origin, finalRotation, { 200, 230, 255, 230 });
+                        EndBlendMode();
+                    }
+                }
+            }
+
+            // ==========================================
+            // ✨ 命中十字爆渲染管线 (Hit Impact VFX)
+            // ==========================================
+            BeginBlendMode(BLEND_ADDITIVE);
+            for (auto it = activeImpacts.begin(); it != activeImpacts.end(); ) {
+                it->timer += dt;
+                // 每帧特效停留 0.04 秒 (极速炸裂)
+                if (it->timer > 0.04f) {
+                    it->frame++;
+                    it->timer = 0.0f;
+                }
+
+                if (it->frame >= 4) {
+                    it = activeImpacts.erase(it);
+                }
+                else {
+                    Texture2D tex = hitImpactTex[it->frame];
+                    if (tex.id != 0) {
+                        float renderX = (it->x - cam.x + camShakeX) * TILE_SIZE;
+                        float renderY = (it->y - cam.y + camShakeY) * TILE_SIZE;
+
+                        // 命中十字爆的大小控制
+                        float sizeW = TILE_SIZE * 2.2f;
+                        float sizeH = TILE_SIZE * 2.2f;
+
+                        Rectangle srcRec = { 0.0f, 0.0f, (float)tex.width, (float)tex.height };
+                        Rectangle destRec = { renderX, renderY, sizeW, sizeH };
+                        Vector2 origin = { sizeW / 2.0f, sizeH / 2.0f };
+
+                        // 画出十字爆，带上生成时的随机旋转角度
+                        DrawTexturePro(tex, srcRec, destRec, origin, it->rotation, { 255, 255, 255, 255 });
+                    }
+                    ++it;
+                }
+            }
+            EndBlendMode();
+
+
             if (player.getHealFlashTimer() > 0.0f) {
-                // 利用透明度衰减，制造出瞬间照亮整个屏幕的“神圣白光”
                 unsigned char flashAlpha = (unsigned char)(255.0f * (player.getHealFlashTimer() / 0.3f));
                 DrawRectangle(0, 0, screenWidth, screenHeight, { 255, 255, 255, flashAlpha });
             }
-            // 画粒子
+
             for (const auto& p : hitParticles) {
                 float renderX = (p.pos.x - cam.x + camShakeX) * TILE_SIZE;
                 float renderY = (p.pos.y - cam.y + camShakeY) * TILE_SIZE;
@@ -707,51 +777,37 @@ int main() {
                 DrawRectangle(renderX, renderY, p.size * TILE_SIZE, p.size * TILE_SIZE, renderColor);
             }
 
-            // ==========================================
-                        // 终极现代化状态栏 UI (HUD)
-                        // ==========================================
             float uiX = 20.0f;
             float uiY = 20.0f;
 
-            // 1. 生命值 (HP) - 红色经典
             DrawRectangle(uiX, uiY, 200, 20, { 50, 20, 20, 200 });
             float hpRatio = fmax(0.0f, (float)player.getHp() / player.getMaxHp());
             DrawRectangle(uiX, uiY, 200 * hpRatio, 20, RED);
             DrawRectangleLines(uiX, uiY, 200, 20, WHITE);
             DrawTextEx(myFont, TextFormat("HP: %d/%d", player.getHp(), player.getMaxHp()), { uiX + 45, uiY + 2 }, 16, 1.0f, WHITE);
 
-            // 2. 灵魂槽 (Mana) - 纯白魔法
             DrawRectangle(uiX, uiY + 25, 150, 12, { 20, 20, 30, 200 });
             float manaRatio = fmax(0.0f, (float)player.getMana() / player.getMaxMana());
             DrawRectangle(uiX, uiY + 25, 150 * manaRatio, 12, WHITE);
             DrawRectangleLines(uiX, uiY + 25, 150, 12, LIGHTGRAY);
             DrawTextEx(myFont, TextFormat("MP: %d/%d", player.getMana(), player.getMaxMana()), { uiX + 160, uiY + 23 }, 16, 1.0f, LIGHTGRAY);
 
-            // 3. 体力条 (Stamina) - 耀眼金黄
             DrawRectangle(uiX, uiY + 42, 120, 8, { 40, 30, 10, 200 });
             float staRatio = fmax(0.0f, player.getStamina() / player.getMaxStamina());
             DrawRectangle(uiX, uiY + 42, 120 * staRatio, 8, YELLOW);
             DrawRectangleLines(uiX, uiY + 42, 120, 8, GRAY);
 
-            // 4. 经验条 (XP) - 翠绿成长
-            DrawRectangle(uiX, uiY + 55, 200, 6, { 10, 30, 10, 200 });
-            float xpRatio = fmax(0.0f, (float)player.getExp() / player.getExpToNext());
-            DrawRectangle(uiX, uiY + 55, 200 * xpRatio, 6, GREEN);
-            DrawRectangleLines(uiX, uiY + 55, 200, 6, DARKGRAY);
-            DrawTextEx(myFont, TextFormat("LVL %d", player.getLevel()), { uiX + 210, uiY + 50 }, 16, 1.0f, GOLD);
-
-            // 战斗日志避开长条 UI
-            DrawTextEx(myFont, combatLog.c_str(), { uiX, uiY + 75 }, 20, 1.0f, WHITE);
+            DrawTextEx(myFont, combatLog.c_str(), { uiX, uiY + 60 }, 20, 1.0f, WHITE);
         }
         else if (currentState == GAME_OVER) {
             DrawTextEx(myFont, "GAME OVER", { 280, 150 }, 40, 1.0f, RED);
             DrawTextEx(myFont, "The knight has fallen...", { 280, 220 }, 20, 1.0f, LIGHTGRAY);
         }
 
-        EndTextureMode(); // 闭合虚拟画布
-        // 【第二层：把虚拟画布贴到真实屏幕上】
+        EndTextureMode();
+
         BeginDrawing();
-        ClearBackground(BLACK); // 屏幕黑边
+        ClearBackground(BLACK);
 
         float scale = fmin((float)GetScreenWidth() / 1280.0f, (float)GetScreenHeight() / 720.0f);
         float offsetX = (GetScreenWidth() - (1280.0f * scale)) * 0.5f;
@@ -762,13 +818,9 @@ int main() {
 
         DrawTexturePro(target.texture, sourceRec, destRec, { 0, 0 }, 0.0f, WHITE);
 
-        EndDrawing(); // 闭合真实屏幕！必须在 while 循环里面！
+        EndDrawing();
+    }
 
-    } // while 循环结束
-
-    // ==========================================
-    // 资源释放区
-    // ==========================================
     for (auto& m : bgms) UnloadMusicStream(m);
     UnloadRenderTexture(target);
     UnloadSound(sfxSwing);
@@ -777,6 +829,8 @@ int main() {
     UnloadSound(sfxDash);
     UnloadSound(sfxWalk);
     UnloadSound(sfxRun);
+    UnloadSound(sfxCast);
+    UnloadSound(sfxHeal);
     UnloadFont(myFont);
     UnloadTexture(bgTex);
     UnloadTexture(texStand);
@@ -784,12 +838,21 @@ int main() {
     UnloadTexture(texRun);
     UnloadTexture(texAttack);
     UnloadTexture(crawlerTex);
+    UnloadTexture(flyerTex);
     UnloadTexture(wallTex);
     UnloadTexture(platformTex);
     UnloadTexture(spikeTex);
     UnloadTexture(bgFar);
+    UnloadTexture(texCast);
+    UnloadTexture(texHeal);
+
+    // 🌟 卸载新增特效
+    for (int i = 0; i < 4; i++) {
+        if (slashTex[i].id != 0) UnloadTexture(slashTex[i]);
+        if (hitImpactTex[i].id != 0) UnloadTexture(hitImpactTex[i]);
+    }
 
     CloseAudioDevice();
     CloseWindow();
     return 0;
-} 
+}
