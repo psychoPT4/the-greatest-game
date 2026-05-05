@@ -2,6 +2,7 @@
 #define camera_h
 
 #include <algorithm>
+#include "raylib.h"
 
 struct GameCamera {
     float x, y;          // 摄像机左上角的世界坐标
@@ -20,6 +21,19 @@ struct GameCamera {
         if (y < 0) y = 0;
         if (x > (float)mapW - viewW) x = (float)mapW - viewW;
         if (y > (float)mapH - viewH) y = (float)mapH - viewH;
+    }
+    Camera2D getCamera() const {
+        Camera2D cam = { 0 };
+        // 你的 x 和 y 是“格子的世界坐标”。
+        // Raylib 的摄像机需要“真实的像素坐标”，所以必须乘以格子的像素大小！
+        // 【注意】：假设你的 TILE_SIZE 是 40.0f。如果你定义了全局常量 TILE_SIZE，请把 40.0f 换成它！
+        cam.target = { x * 40.0f, y * 40.0f };
+
+        cam.offset = { 0.0f, 0.0f }; // 屏幕锚点在左上角
+        cam.rotation = 0.0f;
+        cam.zoom = 1.0f;
+
+        return cam;
     }
 };
 
