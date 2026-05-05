@@ -20,6 +20,8 @@ private:
     int currentFrame;
     float animTimer;
     int totalFrames;
+    int aiState = 0;       // 0:Ñ²Âß, 1:±©Å­Ç°Ò¡, 2:×·»÷, 3:×²Ç½ÀäÈ´/ÃÔÃ£
+    float stateTimer = 0.0f; // ×´Ì¬¼ÆÊ±Æ÷
 public:
     Enemy(int startX, int startY, int expGive);
 

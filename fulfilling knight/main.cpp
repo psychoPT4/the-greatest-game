@@ -90,7 +90,8 @@ int main() {
     Sound sfxDash = LoadSound("dash.wav");
     Sound sfxWalk = LoadSound("walk.wav");
     Sound sfxRun = LoadSound("run.wav");
-
+    Sound sfxCast = LoadSound("cast_spell.wav");
+    Sound sfxHeal = LoadSound("heal.wav");
     RenderTexture2D target = LoadRenderTexture(1280, 720);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
@@ -120,6 +121,8 @@ int main() {
     Texture2D texLand = LoadTexture("knight_land.png");
     Texture2D texPogo = LoadTexture("knight_pogo.png");
     Texture2D bgFar = LoadTexture("bg_far.png");
+    Texture2D texCast = LoadTexture("cast_spell.png");
+    Texture2D texHeal = LoadTexture("heal.png");
 
     float bgScrollSpeed = 0.15f;
     int currentLevel = 1;
@@ -158,7 +161,7 @@ int main() {
     const int ATTACK_TOTAL_FRAMES = 5;
     const int POGO_TOTAL_FRAMES = 2;
     const float ATTACK_SPEED = 0.05f;
-
+    float castVisualTimer = 0.0f;
     // ==========================================
     // 游戏主循环
     // ==========================================
@@ -214,18 +217,21 @@ int main() {
                 mapLoaded = true;
             }
 
-            // 【完美的魔法分离】：传入按键状态，让主角自己思考
+            static float castVisualTimer = 0.0f;
+            if (castVisualTimer > 0.0f) castVisualTimer -= dt;
+
             MagicAction mAct = player.processMagic(IsKeyDown(KEY_I), IsKeyReleased(KEY_I), dt);
 
             if (mAct == CAST_SPELL) {
-                PlaySound(sfxSwing); // 如果你有施法音效最好，这里暂借挥剑音效
-                camShakeX = 0.3f;    // 后坐力
-                combatLog = "释放灵魂冲击波！";
+                PlaySound(sfxCast); // 如果你有施法音效最好，这里暂借挥剑音效
+                camShakeX = 0.4f;    // 后坐力
+                castVisualTimer = 0.25f;
+                combatLog = "灵魂冲击";
             }
             else if (mAct == HEALED) {
-                PlaySound(sfxLand);  // 暂借落地音效当回血音效
+                PlaySound(sfxHeal);  // 暂借落地音效当回血音效
                 camShakeY = 0.1f;    // 能量灌注的微小震动
-                combatLog = "凝聚灵魂，回复生命！";
+                combatLog = "回复生命！";
             }
 
             // 在物理更新区调用：
@@ -574,21 +580,35 @@ int main() {
             static int currentFrame = 0;
             frameTimer += GetFrameTime();
 
+            // ==========================================
+                        // 🌟 决定主角用哪张贴图 (整合了单帧特效开关)
+                        // ==========================================
+            static bool isFacingLeftNow = false;
+            if (!player.getIsDashing() && !isAttacking) {
+                if (IsKeyDown(KEY_A)) isFacingLeftNow = true;
+                else if (IsKeyDown(KEY_D)) isFacingLeftNow = false;
+            }
             Texture2D activeTex = texStand;
             int overrideFrame = -1;
             int totalFrames = 2;
+            bool useSpecialSingleFrame = false; // 🌟 新增的开关：是否触发单帧特效模式
 
-            if (isPogoAttacking) { activeTex = texPogo; totalFrames = POGO_TOTAL_FRAMES; overrideFrame = attackFrame; }
+            // 优先级判定
+            if (player.getIsFocusing()) {
+                activeTex = texHeal; totalFrames = 1; overrideFrame = 0; useSpecialSingleFrame = true;
+            }
+            else if (castVisualTimer > 0.0f) {
+                activeTex = texCast; totalFrames = 1; overrideFrame = 0; useSpecialSingleFrame = true;
+            }
+            else if (isPogoAttacking) { activeTex = texPogo; totalFrames = POGO_TOTAL_FRAMES; overrideFrame = attackFrame; }
             else if (isAttacking) { activeTex = texAttack; totalFrames = ATTACK_TOTAL_FRAMES; overrideFrame = attackFrame; }
             else if (player.getIsDashing()) { activeTex = texRun; totalFrames = 5; }
-            else if (player.getIsFocusing()) { activeTex = texJumpMid; totalFrames = 1; overrideFrame = 0; } // 蓄力时借用空中蜷缩的姿态
             else if (!player.getIsGrounded()) {
                 float vy = player.getVelocityY();
                 if (vy < -5.0f) activeTex = texJumpUp;
                 else if (vy < 5.0f) activeTex = texJumpMid;
                 else activeTex = texFall;
-                totalFrames = 1;
-                overrideFrame = 0;
+                totalFrames = 1; overrideFrame = 0;
             }
             else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_D)) {
                 if (IsKeyDown(KEY_LEFT_SHIFT)) { activeTex = texRun; totalFrames = 5; }
@@ -648,10 +668,31 @@ int main() {
                 Color trailColor = { 50, 150, 255, alpha };
                 DrawSpriteFrame(trail.tex, trail.frameIndex, trail.totalFrames, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
             }
+            if (useSpecialSingleFrame && activeTex.id != 0) {
+                // 1. 代码抖动：利用 sin 函数制造高频微小缩放，模拟能量的不稳定
+                float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
 
-            // 画本体
-            if (activeTex.id != 0) DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, facingLeft);
-            else DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
+                // 2. 放大绘制：因为这两个素材带有特效框，直接画 48x48 可能会显得人物太小
+                float renderW = TILE_SIZE * 1.5f * energyShake;
+                float renderH = TILE_SIZE * 1.5f * energyShake;
+                float offsetX = pRenderX - (renderW - TILE_SIZE) / 2.0f; // 居中偏移
+                float offsetY = pRenderY - (renderH - TILE_SIZE) / 2.0f;
+
+                // 画出带抖动的单帧
+                DrawTexExact(activeTex, offsetX, offsetY, renderW, renderH, WHITE, isFacingLeftNow);
+
+                // 3. 叠加光晕：根据是加血还是施法，在背后铺垫一层发光圆环
+                Color auraColor = (activeTex.id == texHeal.id) ? Color{ 255, 255, 255, 80 } : Color{ 50, 150, 255, 80 };
+                DrawCircle((int)(pRenderX + TILE_SIZE / 2.0f), (int)(pRenderY + TILE_SIZE / 2.0f), TILE_SIZE * 1.2f, auraColor);
+            }
+            else if (activeTex.id != 0) {
+                // 正常的逐帧动画绘制 (比如跑步、平砍)
+                DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, isFacingLeftNow);
+            }
+            else {
+                // 没有贴图时的兜底蓝色方块
+                DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
+            }
             if (player.getHealFlashTimer() > 0.0f) {
                 // 利用透明度衰减，制造出瞬间照亮整个屏幕的“神圣白光”
                 unsigned char flashAlpha = (unsigned char)(255.0f * (player.getHealFlashTimer() / 0.3f));
