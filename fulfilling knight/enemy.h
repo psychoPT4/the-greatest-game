@@ -43,5 +43,5 @@ public:
     }
     std::string getName() const { return name; }
     void update(const Map& gameMap, Player& player, float dt);
-    void takeDamage(int damage, int sourceX, const Map& gameMap);
+    bool takeDamage(int damage, int sourceX, const Map& gameMap);
 };

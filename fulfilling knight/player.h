@@ -94,7 +94,7 @@ public:
     void setMoveIntent(int dir);
     void processJump(bool jumpPressed, bool jumpHeld, bool downHeld);
     void update(const Map& gameMap, float dt);
-    AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed);
+    AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir);
     void setRunningMode(bool run) { isRunningMode = run; }
 
     void addMana(int amount) {

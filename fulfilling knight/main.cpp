@@ -98,8 +98,6 @@ int main() {
     Sound sfxRun = LoadSound("run.wav");
     Sound sfxCast = LoadSound("cast_spell.wav");
     Sound sfxHeal = LoadSound("heal.wav");
-    RenderTexture2D target = LoadRenderTexture(1280, 720);
-    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
     int codepointCount = (127 - 32) + (0x9FA5 - 0x4E00 + 1);
     int* codepoints = new int[codepointCount];
@@ -114,7 +112,8 @@ int main() {
     Texture2D texWalk = LoadTexture("knight_walk.png");
     Texture2D texRun = LoadTexture("knight_run.png");
     Texture2D texAttack = LoadTexture("knight_attack.png");
-    Texture2D crawlerTex = LoadTexture("crawler.png");
+    Texture2D crawlerTex[4];
+    for (int i = 0; i < 4; i++) crawlerTex[i] = LoadTexture(("crawler" + to_string(i) + ".png").c_str());
     Texture2D flyerTex = LoadTexture("flyer.png"); // 飞虫图
     Texture2D wallTex = LoadTexture("wall.png");
     Texture2D platformTex = LoadTexture("platform.png");
@@ -127,6 +126,8 @@ int main() {
     Texture2D bgFar = LoadTexture("bg_far.png");
     Texture2D texCast = LoadTexture("cast_spell.png");
     Texture2D texHeal = LoadTexture("heal.png");
+    RenderTexture2D target = LoadRenderTexture(1280, 720);
+    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
     // 🌟 加载 4 帧刀光散图
     Texture2D slashTex[4];
@@ -170,6 +171,8 @@ int main() {
 
     bool isAttacking = false;
     bool isPogoAttacking = false;
+    bool isUpAttacking = false;      // 🌟 新增：上挑状态
+    int lockedAttackDir = 1;         // 🌟 新增：方向锁
     int attackFrame = 0;
     float attackAnimTimer = 0.0f;
     bool damageDealtThisSwing = false;
@@ -278,17 +281,89 @@ int main() {
             player.processJump(jump && !lastJump, jump, IsKeyDown(KEY_S));
             lastJump = jump;
 
-            if (IsKeyDown(KEY_J) && !isAttacking && !isPogoAttacking && attackCd <= 0 && !player.getIsDashing()) {
+            // 🌟 加入方向锁与 W 键上挑！
+            if (IsKeyPressed(KEY_J) && !isAttacking && !isPogoAttacking && !isUpAttacking && attackCd <= 0 && !player.getIsDashing()) {
                 PlaySound(sfxSwing);
+                lockedAttackDir = player.getFacingDirection(); // 瞬间锁死当前朝向！
+
                 if (!player.getIsGrounded() && IsKeyDown(KEY_S)) {
                     isPogoAttacking = true;
+                }
+                else if (IsKeyDown(KEY_W)) {
+                    isUpAttacking = true; // 触发上挑！
                 }
                 else {
                     isAttacking = true;
                 }
                 attackFrame = 0;
                 attackAnimTimer = 0.0f;
-                damageDealtThisSwing = false;
+            }
+
+            if (isAttacking || isPogoAttacking || isUpAttacking) {
+                if (hitStopTimer <= 0.0f) {
+                    attackAnimTimer += dt;
+                    float currentAnimSpeed = isPogoAttacking ? 0.12f : ATTACK_SPEED;
+
+                    if (attackAnimTimer >= currentAnimSpeed) {
+                        attackFrame++;
+                        attackAnimTimer = 0.0f;
+                    }
+                }
+
+                // 🌟 判断当前是哪种攻击模式 (0平砍, 1下劈, 2上挑)
+                int currentAttackType = 0;
+                if (isPogoAttacking) currentAttackType = 1;
+                else if (isUpAttacking) currentAttackType = 2;
+
+                // 🌟 判定帧持久化！平砍和上挑在第 1、2、3 帧都具有杀伤力！
+                bool isActiveFrame = false;
+                if (isPogoAttacking) isActiveFrame = (attackFrame == 1);
+                else isActiveFrame = (attackFrame >= 1 && attackFrame <= 3);
+
+                // 只要在判定帧内，每帧都扫一遍！
+                if (isActiveFrame) {
+                    AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir);
+
+                    // 只有真正砍到新怪物，才会触发火花和卡肉！
+                    if (result.hitSomething || result.pogoSuccess) {
+                        PlaySound(sfxHit);
+                        hitStopTimer = 0.08f;
+
+                        float hitX = player.getRealX();
+                        float hitY = player.getRealY();
+                        if (result.pogoSuccess) hitY += 1.0f;
+                        else if (currentAttackType == 2) hitY -= 1.0f; // 上挑火花在头顶
+                        else {
+                            hitY += 0.5f;
+                            hitX += (lockedAttackDir == -1) ? -0.6f : 0.6f;
+                        }
+
+                        activeImpacts.push_back({ hitX, hitY, 0, 0.0f, (float)GetRandomValue(0, 360) });
+
+                        int sparkCount = GetRandomValue(45, 65);
+                        for (int i = 0; i < sparkCount; i++) {
+                            HitParticle p = {};
+                            p.pos = { hitX, hitY };
+                            p.velocity.x = GetRandomValue(-50, 50) / 1.0f;
+                            p.velocity.y = GetRandomValue(-40, 5) / 1.0f;
+                            p.maxLife = GetRandomValue(15, 35) / 100.0f; p.life = p.maxLife;
+                            p.size = GetRandomValue(4, 20) / 100.0f;
+                            p.color = (GetRandomValue(0, 10) < 2) ? ORANGE : WHITE;
+                            hitParticles.push_back(p);
+                        }
+                    }
+                }
+
+                int maxFrames = isPogoAttacking ? POGO_TOTAL_FRAMES : ATTACK_TOTAL_FRAMES;
+                if (attackFrame >= maxFrames) {
+                    isAttacking = false;
+                    isPogoAttacking = false;
+                    isUpAttacking = false;
+                    attackCd = 12;
+                }
+            }
+            else {
+                if (attackCd > 0) attackCd--;
             }
 
             if (isAttacking || isPogoAttacking) {
@@ -302,47 +377,53 @@ int main() {
                     }
                 }
 
-                int triggerFrame = isPogoAttacking ? 1 : 2;
+                // 🌟 1. 判断当前是哪种攻击模式 (0平砍, 1下劈, 2上挑)
+                int currentAttackType = 0;
+                if (isPogoAttacking) currentAttackType = 1;
+                else if (isUpAttacking) currentAttackType = 2;
 
-                if (attackFrame == triggerFrame && !damageDealtThisSwing) {
-                    AttackResult result = player.attack(enemies, gameMap, IsKeyDown(KEY_S));
+                // 🌟 2. 判定帧持久化！平砍和上挑在第 1、2、3 帧都具有杀伤力！
+                bool isActiveFrame = false;
+                if (isPogoAttacking) isActiveFrame = (attackFrame == 1);
+                else isActiveFrame = (attackFrame >= 1 && attackFrame <= 3);
 
+                // 🌟 3. 只要在判定帧内，每帧都扫一遍！
+                if (isActiveFrame) {
+                    // 注意看这里！完美传入了 4 个参数：外加 currentAttackType 和 lockedAttackDir
+                    AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir);
+
+                    // 只有 target.takeDamage 返回 true（真扣血了），这里才会触发火花和卡肉！
                     if (result.hitSomething || result.pogoSuccess) {
                         PlaySound(sfxHit);
                         hitStopTimer = 0.08f;
 
                         float hitX = player.getRealX();
                         float hitY = player.getRealY();
-                        if (result.pogoSuccess) {
-                            hitY += 1.0f;
-                        }
+
+                        // 智能调整爆火花的位置
+                        if (result.pogoSuccess) hitY += 1.0f;
+                        else if (currentAttackType == 2) hitY -= 1.0f; // 上挑火花在头顶爆开
                         else {
                             hitY += 0.5f;
-                            hitX += IsKeyDown(KEY_A) ? -0.6f : 0.6f;
+                            hitX += (lockedAttackDir == -1) ? -0.6f : 0.6f;
                         }
 
-                        // 🌟 触发十字爆特效！把它种在命中的坐标上
+                        // 触发命中十字爆！
                         activeImpacts.push_back({ hitX, hitY, 0, 0.0f, (float)GetRandomValue(0, 360) });
 
+                        // 迸发黄色碎屑火花
                         int sparkCount = GetRandomValue(45, 65);
                         for (int i = 0; i < sparkCount; i++) {
                             HitParticle p = {};
                             p.pos = { hitX, hitY };
                             p.velocity.x = GetRandomValue(-50, 50) / 1.0f;
                             p.velocity.y = GetRandomValue(-40, 5) / 1.0f;
-                            p.maxLife = GetRandomValue(15, 35) / 100.0f;
-                            p.life = p.maxLife;
+                            p.maxLife = GetRandomValue(15, 35) / 100.0f; p.life = p.maxLife;
                             p.size = GetRandomValue(4, 20) / 100.0f;
-
-                            int colorRoll = GetRandomValue(0, 10);
-                            if (colorRoll < 2) p.color = ORANGE;
-                            else if (colorRoll < 6) p.color = YELLOW;
-                            else p.color = WHITE;
-
+                            p.color = (GetRandomValue(0, 10) < 2) ? ORANGE : WHITE;
                             hitParticles.push_back(p);
                         }
                     }
-                    damageDealtThisSwing = true;
                 }
                 int maxFrames = isPogoAttacking ? POGO_TOTAL_FRAMES : ATTACK_TOTAL_FRAMES;
                 if (attackFrame >= maxFrames) {
@@ -551,17 +632,26 @@ int main() {
             for (const auto& e : enemies) {
                 if (e.isAlive()) {
                     float renderX = (e.getRealX() - cam.x - 0.10f + camShakeX) * TILE_SIZE;
-                    float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
                     bool eFacingLeft = (e.getVelocityX() < 0);
 
                     if (e.getName() == "Flyer" && flyerTex.id != 0) {
+                        float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
                         DrawSpriteFrame(flyerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY - 10.0f, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                     }
-                    else if (crawlerTex.id != 0) {
-                        DrawSpriteFrame(crawlerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY, 1.0f * TILE_SIZE, 0.6f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                    else if (e.getName() == "Crawler") {
+                        // 🌟 爬虫全新渲染逻辑 (1:1 尺寸)
+                        Texture2D cTex = crawlerTex[e.getCurrentFrame()];
+                        if (cTex.id != 0) {
+                            // 因为碰撞箱变成了 0.8f 高，我们需要把渲染的 Y 轴稍微往上提一点点，让它的脚完美贴合地面
+                            float renderY = (e.getRealY() - cam.y + 0.10f + camShakeY) * TILE_SIZE;
+
+                            // 巧妙利用 DrawSpriteFrame 的翻转功能：把 totalFrames 设为 1，强行画单张散图！
+                            DrawSpriteFrame(cTex, 0, 1, renderX, renderY, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                        }
                     }
                     else {
-                        DrawRectangle(renderX, renderY, 0.8f * TILE_SIZE, 0.5f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
+                        float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
+                        DrawRectangle(renderX, renderY, 0.8f * TILE_SIZE, 0.8f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
                     }
                 }
             }
@@ -837,7 +927,10 @@ int main() {
     UnloadTexture(texWalk);
     UnloadTexture(texRun);
     UnloadTexture(texAttack);
-    UnloadTexture(crawlerTex);
+    // 🌟 卸载全新的 4 帧爬虫散图
+    for (int i = 0; i < 4; i++) {
+        if (crawlerTex[i].id != 0) UnloadTexture(crawlerTex[i]);
+    }
     UnloadTexture(flyerTex);
     UnloadTexture(wallTex);
     UnloadTexture(platformTex);

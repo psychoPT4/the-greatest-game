@@ -198,42 +198,52 @@ void Player::update(const Map& gameMap, float dt) {
     realY = nextRealY; x = (int)std::round(realX); y = (int)std::round(realY);
 }
 
-AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, bool downPressed) {
+AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir) {
     AttackResult res;
     Hitbox myBox = getHitbox();
+    Hitbox strikeBox;
 
-    if (!isGrounded && downPressed) {
-        Hitbox pogoBox = { myBox.left, myBox.right, myBox.bottom, myBox.bottom + 1.5f };
-        for (auto& target : enemies) {
-            if (!target.isAlive()) continue;
-            if (pogoBox.intersects(target.getHitbox())) {
-                target.takeDamage(baseDamage, x, gameMap);
-                res.pogoSuccess = true; res.hitSomething = true;
-                addMana(11);
-                combatLog = "【下劈弹刀！】命中目标 ";
-            }
-        }
-        TileType leftFoot = gameMap.getTileAt((int)pogoBox.left, (int)pogoBox.bottom);
-        TileType rightFoot = gameMap.getTileAt((int)pogoBox.right, (int)pogoBox.bottom);
-        if (leftFoot == TileType::SpikeUp || rightFoot == TileType::SpikeUp) { res.pogoSuccess = true; combatLog = "【下劈弹刀！】借助地刺弹起 "; }
-        if (res.pogoSuccess) { velocityY = jumpForce * 0.9f; jumpCount = 1; }
+    // 1. 生成锁定方向的碰撞盒
+    if (attackType == 1 && !isGrounded) {
+        // 【下劈】
+        strikeBox = { myBox.left, myBox.right, myBox.bottom, myBox.bottom + 1.5f };
+    }
+    else if (attackType == 2) {
+        // 🌟 【上挑】：在头顶生成判定框
+        strikeBox = { myBox.left - 0.5f, myBox.right + 0.5f, myBox.top - 1.5f, myBox.top };
     }
     else {
-        Hitbox slashBox;
-        if (facingDirection == 1) slashBox = { myBox.right, myBox.right + 1.5f, myBox.top, myBox.bottom };
-        else slashBox = { myBox.left - 1.5f, myBox.left, myBox.top, myBox.bottom };
+        // 🌟 【平砍】：严格使用 lockedDir，拒绝转身滑步！
+        if (lockedDir == 1) strikeBox = { myBox.right, myBox.right + 1.5f, myBox.top, myBox.bottom };
+        else strikeBox = { myBox.left - 1.5f, myBox.left, myBox.top, myBox.bottom };
+    }
 
-        bool hitSomething = false;
-        for (auto& target : enemies) {
-            if (!target.isAlive()) continue;
-            if (slashBox.intersects(target.getHitbox())) {
-                target.takeDamage(baseDamage, x, gameMap);
-                res.hitSomething = true; hitSomething = true; combatLog = "发起平砍 ";
+    // 2. 遍历敌人，造成有效伤害
+    for (auto& target : enemies) {
+        if (!target.isAlive()) continue;
+        if (strikeBox.intersects(target.getHitbox())) {
+            // 🌟 只有 takeDamage 返回 true（真的扣血了），才判定为命中！
+            if (target.takeDamage(baseDamage, x, gameMap)) {
+                res.hitSomething = true;
+                if (attackType == 1) res.pogoSuccess = true;
                 addMana(11);
+                combatLog = "【命中目标！】 ";
             }
         }
-        if (!hitSomething) combatLog = "挥空了... ";
     }
+
+    // 下劈弹起地形的逻辑保留
+    if (attackType == 1 && !res.pogoSuccess) {
+        TileType leftFoot = gameMap.getTileAt((int)strikeBox.left, (int)strikeBox.bottom);
+        TileType rightFoot = gameMap.getTileAt((int)strikeBox.right, (int)strikeBox.bottom);
+        if (leftFoot == TileType::SpikeUp || rightFoot == TileType::SpikeUp) {
+            res.pogoSuccess = true;
+            combatLog = "【下劈弹刀！】借助地刺弹起 ";
+        }
+    }
+
+    if (res.pogoSuccess) { velocityY = jumpForce * 0.9f; jumpCount = 1; }
+
     return res;
 }
 
