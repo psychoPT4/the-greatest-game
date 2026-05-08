@@ -28,6 +28,7 @@ void Player::setRealPos(float nx, float ny) {
 }
 
 void Player::takeDamage(int damage, int sourceX, const Map& gameMap) {
+    if (isDashing) return;
     if (!alive || flickerTimer > 0) return;
 
     if (isDashing) {
@@ -125,12 +126,12 @@ void Player::update(const Map& gameMap, float dt) {
 
     if (isDashing) {
     }
-    else if (isRunningMode && isGrounded && (IsKeyDown(KEY_A) || IsKeyDown(KEY_D))) {
-        stamina -= 15.0f * dt;
+    else if (isRunningMode && isGrounded && moveIntent != 0) {
+        stamina -= 28.0f * dt;
         if (stamina < 0.0f) stamina = 0.0f;
     }
     else {
-        stamina += 25.0f * dt;
+        stamina += 18.0f * dt;
         if (stamina > maxStamina) stamina = maxStamina;
     }
 

@@ -1,0 +1,1 @@
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\x64\Debug\fulfilling knight.exe

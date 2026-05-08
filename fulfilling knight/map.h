@@ -2,7 +2,6 @@
 #include <vector>
 #include <string>
 #include "raylib.h"
-using namespace std;
 struct ParallaxLayer {
     Texture2D tex;
     float scrollSpeed;

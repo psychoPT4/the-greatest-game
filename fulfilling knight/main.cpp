@@ -13,7 +13,7 @@
 
 using namespace std;
 
-enum GameState { MENU, PLAYING, GAME_OVER };
+enum GameState { MENU, PLAYING, PAUSED, SETTINGS, GAME_OVER };
 GameState currentState = MENU;
 
 struct SporeParticle {
@@ -49,7 +49,7 @@ struct HitImpactVFX {
     float y;
     int frame;
     float timer;
-    float rotation; // 每次打中随机旋转一个角度，张力拉满！
+    float rotation;
 };
 
 string combatLog = "Adventure continues...";
@@ -108,32 +108,61 @@ int main() {
     delete[] codepoints;
 
     Texture2D bgTex = LoadTexture("bg.png");
-    Texture2D texStand = LoadTexture("knight_stand.png");
-    Texture2D texWalk = LoadTexture("knight_walk.png");
-    Texture2D texRun = LoadTexture("knight_run.png");
-    Texture2D texAttack = LoadTexture("knight_attack.png");
+
+    // ==========================================
+    // 🌟 精确散图阵列 (骑士全新资产)
+    // ==========================================
+    vector<Texture2D> knightStand;
+    for (int i = 0; i < 2; i++) knightStand.push_back(LoadTexture(TextFormat("stand%d.png", i)));
+
+    vector<Texture2D> knightWalk;
+    for (int i = 0; i < 4; i++) knightWalk.push_back(LoadTexture(TextFormat("walk%d.png", i)));
+
+    vector<Texture2D> knightRun;
+    for (int i = 0; i < 5; i++) knightRun.push_back(LoadTexture(TextFormat("run%d.png", i)));
+
+    vector<Texture2D> knightAttack; // 单段平砍 (3帧)
+    for (int i = 0; i < 3; i++) knightAttack.push_back(LoadTexture(TextFormat("attack%d.png", i)));
+
+    vector<Texture2D> knightUpAttack; // 上挑 (3帧)
+    for (int i = 0; i < 3; i++) knightUpAttack.push_back(LoadTexture(TextFormat("upattack%d.png", i)));
+
+    vector<Texture2D> knightPogo; // 下劈 (4帧)
+    for (int i = 0; i < 4; i++) knightPogo.push_back(LoadTexture(TextFormat("pogo%d.png", i)));
+
+    // 🌟 空中动态序列
+    vector<Texture2D> knightJump; // 起跳瞬间 (2帧)
+    for (int i = 0; i < 2; i++) knightJump.push_back(LoadTexture(TextFormat("jump%d.png", i)));
+
+    vector<Texture2D> knightUp; // 空中上升 (1帧)
+    knightUp.push_back(LoadTexture("up.png"));
+
+    vector<Texture2D> knightFall; // 空中下落 (1帧)
+    knightFall.push_back(LoadTexture("fall.png"));
+
+    vector<Texture2D> knightLand; // 落地缓冲 (2帧)
+    for (int i = 0; i < 2; i++) knightLand.push_back(LoadTexture(TextFormat("land%d.png", i)));
+
+    // 法术动画 (沿用单图加载入 vector)
+    vector<Texture2D> knightHeal;
+    knightHeal.push_back(LoadTexture("heal.png"));
+    vector<Texture2D> knightCast;
+    knightCast.push_back(LoadTexture("cast_spell.png"));
+
     Texture2D crawlerTex[4];
     for (int i = 0; i < 4; i++) crawlerTex[i] = LoadTexture(("crawler" + to_string(i) + ".png").c_str());
-    Texture2D flyerTex = LoadTexture("flyer.png"); // 飞虫图
+    Texture2D flyerTex = LoadTexture("flyer.png");
     Texture2D wallTex = LoadTexture("wall.png");
     Texture2D platformTex = LoadTexture("platform.png");
     Texture2D spikeTex = LoadTexture("spike.png");
-    Texture2D texJumpUp = LoadTexture("knight_jump_up.png");
-    Texture2D texJumpMid = LoadTexture("knight_jump_mid.png");
-    Texture2D texFall = LoadTexture("knight_fall.png");
-    Texture2D texLand = LoadTexture("knight_land.png");
-    Texture2D texPogo = LoadTexture("knight_pogo.png");
     Texture2D bgFar = LoadTexture("bg_far.png");
-    Texture2D texCast = LoadTexture("cast_spell.png");
-    Texture2D texHeal = LoadTexture("heal.png");
+
     RenderTexture2D target = LoadRenderTexture(1280, 720);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
-    // 🌟 加载 4 帧刀光散图
     Texture2D slashTex[4];
     for (int i = 0; i < 4; i++) slashTex[i] = LoadTexture(("slash" + to_string(i) + ".png").c_str());
 
-    // 🌟 加载 4 帧命中十字爆散图
     Texture2D hitImpactTex[4];
     for (int i = 0; i < 4; i++) hitImpactTex[i] = LoadTexture(("hit_impact" + to_string(i) + ".png").c_str());
 
@@ -163,7 +192,7 @@ int main() {
 
     vector<DashTrail> dashTrails;
     vector<HitParticle> hitParticles;
-    vector<HitImpactVFX> activeImpacts; // 🌟 十字爆生命周期管理池
+    vector<HitImpactVFX> activeImpacts;
 
     float hitStopTimer = 0.0f;
     float camShakeX = 0.0f;
@@ -171,15 +200,30 @@ int main() {
 
     bool isAttacking = false;
     bool isPogoAttacking = false;
-    bool isUpAttacking = false;      // 🌟 新增：上挑状态
-    int lockedAttackDir = 1;         // 🌟 新增：方向锁
+    bool isUpAttacking = false;
+    int lockedAttackDir = 1;
     int attackFrame = 0;
     float attackAnimTimer = 0.0f;
-    bool damageDealtThisSwing = false;
-    const int ATTACK_TOTAL_FRAMES = 5;
-    const int POGO_TOTAL_FRAMES = 2;
-    const float ATTACK_SPEED = 0.05f;
+    int currentAttackType = 0; // 0=平砍, 1=下劈, 2=上挑
     float castVisualTimer = 0.0f;
+
+    // Animation & input state
+    float stepTimer = 0.4f;
+    bool lastJump = false;
+    bool wasGroundedLastFrame = true;
+    bool facingLeft = false;
+    float frameTimer = 0.0f;
+    int currentFrame = 0;
+    bool isFacingLeftNow = false;
+    float dashTrailTimer = 0.0f;
+    float runTrailTimer = 0.0f;
+    float bgmVolume = 0.5f;
+    float sfxVolume = 1.0f;
+
+    // 🌟 新增：跳跃与落地的过渡动画计时器
+    float jumpAnimTimer = 0.0f;
+    float landAnimTimer = 0.0f;
+    vector<Texture2D>* lastFrameArray = nullptr;
 
     while (!WindowShouldClose()) {
 
@@ -208,6 +252,9 @@ int main() {
                 currentBgmIndex = currentLevel;
                 PlayMusicStream(bgms[currentBgmIndex]);
             }
+            if (CheckCollisionPointRec(mousePos, btnSettings) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                currentState = SETTINGS;
+            }
             if (CheckCollisionPointRec(mousePos, btnExit) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 break;
             }
@@ -219,6 +266,9 @@ int main() {
             }
         }
         else if (currentState == PLAYING) {
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                currentState = PAUSED;
+            }
             if (!mapLoaded) {
                 if (!gameMap.loadLevel(currentLevel)) break;
                 SpawnPoint pSpawn = gameMap.getPlayerSpawn();
@@ -231,6 +281,27 @@ int main() {
                     else if (s.type == 9) enemies.emplace_back(s.x, s.y, 1);
                 }
                 mapLoaded = true;
+
+                // Reset animation/input state for new level
+                stepTimer = 0.4f;
+                lastJump = false;
+                wasGroundedLastFrame = true;
+                frameTimer = 0.0f;
+                currentFrame = 0;
+                isFacingLeftNow = false;
+                lastFrameArray = nullptr;
+                dashTrailTimer = 0.0f;
+                runTrailTimer = 0.0f;
+                jumpAnimTimer = 0.0f;
+                landAnimTimer = 0.0f;
+                hitParticles.clear();
+                dashTrails.clear();
+                activeImpacts.clear();
+                isAttacking = false;
+                isPogoAttacking = false;
+                isUpAttacking = false;
+                attackCd = 0;
+                castVisualTimer = 0.0f;
             }
 
             if (castVisualTimer > 0.0f) castVisualTimer -= dt;
@@ -256,7 +327,6 @@ int main() {
             }
 
             int moveDir = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
-            static float stepTimer = 0.4f;
             if (player.getIsGrounded() && moveDir != 0 && !player.getIsDashing() && !isAttacking && !isPogoAttacking) {
                 stepTimer += dt;
                 float currentStepInterval = IsKeyDown(KEY_LEFT_SHIFT) ? 0.28f : 0.45f;
@@ -271,38 +341,40 @@ int main() {
             player.setMoveIntent(moveDir);
             player.setRunningMode(IsKeyDown(KEY_LEFT_SHIFT));
 
+            // 🌟 触发起跳动画
             bool jump = IsKeyDown(KEY_K);
-            static bool lastJump = false;
             if (jump && !lastJump) {
                 if (player.getIsGrounded() || player.getJumpCount() < 2) {
                     PlaySound(sfxJump);
+                    jumpAnimTimer = 0.2f;
                 }
             }
             player.processJump(jump && !lastJump, jump, IsKeyDown(KEY_S));
             lastJump = jump;
 
-            // 🌟 加入方向锁与 W 键上挑！
-            if (IsKeyPressed(KEY_J) && !isAttacking && !isPogoAttacking && !isUpAttacking && attackCd <= 0 && !player.getIsDashing()) {
+            // 🌟 精简版单段动作攻击逻辑
+            if (IsKeyPressed(KEY_J) && !isAttacking && !player.getIsDashing() && attackCd <= 0) {
                 PlaySound(sfxSwing);
+                isAttacking = true;
                 lockedAttackDir = player.getFacingDirection(); // 瞬间锁死当前朝向！
-
-                if (!player.getIsGrounded() && IsKeyDown(KEY_S)) {
-                    isPogoAttacking = true;
-                }
-                else if (IsKeyDown(KEY_W)) {
-                    isUpAttacking = true; // 触发上挑！
-                }
-                else {
-                    isAttacking = true;
-                }
                 attackFrame = 0;
                 attackAnimTimer = 0.0f;
+
+                if (!player.getIsGrounded() && IsKeyDown(KEY_S)) {
+                    isPogoAttacking = true; currentAttackType = 1;
+                }
+                else if (IsKeyDown(KEY_W)) {
+                    isUpAttacking = true; currentAttackType = 2;
+                }
+                else {
+                    currentAttackType = 0;
+                }
             }
 
-            if (isAttacking || isPogoAttacking || isUpAttacking) {
+            if (isAttacking) {
                 if (hitStopTimer <= 0.0f) {
                     attackAnimTimer += dt;
-                    float currentAnimSpeed = isPogoAttacking ? 0.12f : ATTACK_SPEED;
+                    float currentAnimSpeed = isPogoAttacking ? 0.08f : 0.05f;
 
                     if (attackAnimTimer >= currentAnimSpeed) {
                         attackFrame++;
@@ -310,21 +382,16 @@ int main() {
                     }
                 }
 
-                // 🌟 判断当前是哪种攻击模式 (0平砍, 1下劈, 2上挑)
-                int currentAttackType = 0;
-                if (isPogoAttacking) currentAttackType = 1;
-                else if (isUpAttacking) currentAttackType = 2;
+                // 根据类型获取总帧数 (平砍3, 下劈4, 上挑3)
+                int totalFrames = 3;
+                if (currentAttackType == 1) totalFrames = 4;
 
-                // 🌟 判定帧持久化！平砍和上挑在第 1、2、3 帧都具有杀伤力！
-                bool isActiveFrame = false;
-                if (isPogoAttacking) isActiveFrame = (attackFrame == 1);
-                else isActiveFrame = (attackFrame >= 1 && attackFrame <= 3);
+                // 🌟 所有攻击，第 1 到 2 帧都具有强力判定！
+                bool isActiveFrame = (attackFrame >= 1 && attackFrame <= 2);
 
-                // 只要在判定帧内，每帧都扫一遍！
                 if (isActiveFrame) {
                     AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir);
 
-                    // 只有真正砍到新怪物，才会触发火花和卡肉！
                     if (result.hitSomething || result.pogoSuccess) {
                         PlaySound(sfxHit);
                         hitStopTimer = 0.08f;
@@ -332,7 +399,7 @@ int main() {
                         float hitX = player.getRealX();
                         float hitY = player.getRealY();
                         if (result.pogoSuccess) hitY += 1.0f;
-                        else if (currentAttackType == 2) hitY -= 1.0f; // 上挑火花在头顶
+                        else if (currentAttackType == 2) hitY -= 1.0f;
                         else {
                             hitY += 0.5f;
                             hitX += (lockedAttackDir == -1) ? -0.6f : 0.6f;
@@ -354,82 +421,9 @@ int main() {
                     }
                 }
 
-                int maxFrames = isPogoAttacking ? POGO_TOTAL_FRAMES : ATTACK_TOTAL_FRAMES;
-                if (attackFrame >= maxFrames) {
-                    isAttacking = false;
-                    isPogoAttacking = false;
-                    isUpAttacking = false;
-                    attackCd = 12;
-                }
-            }
-            else {
-                if (attackCd > 0) attackCd--;
-            }
-
-            if (isAttacking || isPogoAttacking) {
-                if (hitStopTimer <= 0.0f) {
-                    attackAnimTimer += dt;
-                    float currentAnimSpeed = isPogoAttacking ? 0.12f : ATTACK_SPEED;
-
-                    if (attackAnimTimer >= currentAnimSpeed) {
-                        attackFrame++;
-                        attackAnimTimer = 0.0f;
-                    }
-                }
-
-                // 🌟 1. 判断当前是哪种攻击模式 (0平砍, 1下劈, 2上挑)
-                int currentAttackType = 0;
-                if (isPogoAttacking) currentAttackType = 1;
-                else if (isUpAttacking) currentAttackType = 2;
-
-                // 🌟 2. 判定帧持久化！平砍和上挑在第 1、2、3 帧都具有杀伤力！
-                bool isActiveFrame = false;
-                if (isPogoAttacking) isActiveFrame = (attackFrame == 1);
-                else isActiveFrame = (attackFrame >= 1 && attackFrame <= 3);
-
-                // 🌟 3. 只要在判定帧内，每帧都扫一遍！
-                if (isActiveFrame) {
-                    // 注意看这里！完美传入了 4 个参数：外加 currentAttackType 和 lockedAttackDir
-                    AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir);
-
-                    // 只有 target.takeDamage 返回 true（真扣血了），这里才会触发火花和卡肉！
-                    if (result.hitSomething || result.pogoSuccess) {
-                        PlaySound(sfxHit);
-                        hitStopTimer = 0.08f;
-
-                        float hitX = player.getRealX();
-                        float hitY = player.getRealY();
-
-                        // 智能调整爆火花的位置
-                        if (result.pogoSuccess) hitY += 1.0f;
-                        else if (currentAttackType == 2) hitY -= 1.0f; // 上挑火花在头顶爆开
-                        else {
-                            hitY += 0.5f;
-                            hitX += (lockedAttackDir == -1) ? -0.6f : 0.6f;
-                        }
-
-                        // 触发命中十字爆！
-                        activeImpacts.push_back({ hitX, hitY, 0, 0.0f, (float)GetRandomValue(0, 360) });
-
-                        // 迸发黄色碎屑火花
-                        int sparkCount = GetRandomValue(45, 65);
-                        for (int i = 0; i < sparkCount; i++) {
-                            HitParticle p = {};
-                            p.pos = { hitX, hitY };
-                            p.velocity.x = GetRandomValue(-50, 50) / 1.0f;
-                            p.velocity.y = GetRandomValue(-40, 5) / 1.0f;
-                            p.maxLife = GetRandomValue(15, 35) / 100.0f; p.life = p.maxLife;
-                            p.size = GetRandomValue(4, 20) / 100.0f;
-                            p.color = (GetRandomValue(0, 10) < 2) ? ORANGE : WHITE;
-                            hitParticles.push_back(p);
-                        }
-                    }
-                }
-                int maxFrames = isPogoAttacking ? POGO_TOTAL_FRAMES : ATTACK_TOTAL_FRAMES;
-                if (attackFrame >= maxFrames) {
-                    isAttacking = false;
-                    isPogoAttacking = false;
-                    attackCd = 12;
+                if (attackFrame >= totalFrames) {
+                    isAttacking = false; isPogoAttacking = false; isUpAttacking = false;
+                    attackCd = 10;
                 }
             }
             else {
@@ -446,14 +440,16 @@ int main() {
                 camShakeY = 0.0f;
 
                 player.update(gameMap, dt);
-                static bool wasGroundedLastFrame = true;
-                bool isGroundedNow = player.getIsGrounded();
 
+                // 🌟 触发落地缓冲动画
+                bool isGroundedNow = player.getIsGrounded();
                 if (!wasGroundedLastFrame && isGroundedNow) {
                     PlaySound(sfxLand);
                     camShakeY = 0.05f;
+                    landAnimTimer = 0.2f;
                 }
                 wasGroundedLastFrame = isGroundedNow;
+
                 if (gameMap.getTileAt(player.getX(), player.getY() + 1) == TileType::Wall) {
                     safeX = player.getRealX(); safeY = player.getRealY();
                 }
@@ -510,6 +506,73 @@ int main() {
                 currentState = GAME_OVER;
             }
         }
+        else if (currentState == PAUSED) {
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                currentState = PLAYING;
+            }
+        }
+        else if (currentState == SETTINGS) {
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                currentState = MENU;
+            }
+
+            Vector2 mousePos = GetMousePosition();
+            Rectangle btnBack = { screenWidth / 2.0f - 60, screenHeight / 2.0f + 160, 120, 50 };
+            if (CheckCollisionPointRec(mousePos, btnBack) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                currentState = MENU;
+            }
+
+            Rectangle btnBgmDown = { screenWidth / 2.0f + 60, screenHeight / 2.0f - 40, 40, 40 };
+            Rectangle btnBgmUp = { screenWidth / 2.0f + 110, screenHeight / 2.0f - 40, 40, 40 };
+            Rectangle btnSfxDown = { screenWidth / 2.0f + 60, screenHeight / 2.0f + 30, 40, 40 };
+            Rectangle btnSfxUp = { screenWidth / 2.0f + 110, screenHeight / 2.0f + 30, 40, 40 };
+
+            if (CheckCollisionPointRec(mousePos, btnBgmDown) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                bgmVolume = fmax(0.0f, bgmVolume - 0.1f);
+                for (auto& m : bgms) SetMusicVolume(m, bgmVolume * 0.8f);
+            }
+            if (CheckCollisionPointRec(mousePos, btnBgmUp) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                bgmVolume = fmin(1.0f, bgmVolume + 0.1f);
+                for (auto& m : bgms) SetMusicVolume(m, bgmVolume * 0.8f);
+            }
+            if (CheckCollisionPointRec(mousePos, btnSfxDown) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                sfxVolume = fmax(0.0f, sfxVolume - 0.1f);
+                SetSoundVolume(sfxSwing, sfxVolume);
+                SetSoundVolume(sfxHit, sfxVolume);
+                SetSoundVolume(sfxJump, sfxVolume);
+                SetSoundVolume(sfxLand, sfxVolume);
+                SetSoundVolume(sfxDash, sfxVolume);
+                SetSoundVolume(sfxWalk, sfxVolume);
+                SetSoundVolume(sfxRun, sfxVolume);
+                SetSoundVolume(sfxCast, sfxVolume);
+                SetSoundVolume(sfxHeal, sfxVolume);
+            }
+            if (CheckCollisionPointRec(mousePos, btnSfxUp) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                sfxVolume = fmin(1.0f, sfxVolume + 0.1f);
+                SetSoundVolume(sfxSwing, sfxVolume);
+                SetSoundVolume(sfxHit, sfxVolume);
+                SetSoundVolume(sfxJump, sfxVolume);
+                SetSoundVolume(sfxLand, sfxVolume);
+                SetSoundVolume(sfxDash, sfxVolume);
+                SetSoundVolume(sfxWalk, sfxVolume);
+                SetSoundVolume(sfxRun, sfxVolume);
+                SetSoundVolume(sfxCast, sfxVolume);
+                SetSoundVolume(sfxHeal, sfxVolume);
+            }
+        }
+        else if (currentState == GAME_OVER) {
+            if (IsKeyPressed(KEY_ENTER)) {
+                currentLevel = 1;
+                currentState = PLAYING; mapLoaded = false;
+                StopMusicStream(bgms[currentBgmIndex]);
+                currentBgmIndex = 0;
+                PlayMusicStream(bgms[currentBgmIndex]);
+            }
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                currentState = MENU;
+                StopMusicStream(bgms[currentBgmIndex]);
+            }
+        }
 
         BeginTextureMode(target);
         ClearBackground({ 20, 20, 30, 255 });
@@ -553,7 +616,7 @@ int main() {
             DrawRectangleLinesEx(btnExit, 2, hoverExit ? WHITE : GRAY);
             DrawTextEx(myFont, "EXIT", { (float)(btnExit.x + 80), (float)(btnExit.y + 15) }, 20, 1.0f, hoverExit ? WHITE : GRAY);
         }
-        else if (currentState == PLAYING) {
+        else if (currentState == PLAYING || currentState == PAUSED) {
 
             if (!gameMap.getBgLayers().empty()) {
                 float camTargetX = player.getRealX();
@@ -639,13 +702,9 @@ int main() {
                         DrawSpriteFrame(flyerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY - 10.0f, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                     }
                     else if (e.getName() == "Crawler") {
-                        // 🌟 爬虫全新渲染逻辑 (1:1 尺寸)
                         Texture2D cTex = crawlerTex[e.getCurrentFrame()];
                         if (cTex.id != 0) {
-                            // 因为碰撞箱变成了 0.8f 高，我们需要把渲染的 Y 轴稍微往上提一点点，让它的脚完美贴合地面
                             float renderY = (e.getRealY() - cam.y + 0.10f + camShakeY) * TILE_SIZE;
-
-                            // 巧妙利用 DrawSpriteFrame 的翻转功能：把 totalFrames 设为 1，强行画单张散图！
                             DrawSpriteFrame(cTex, 0, 1, renderX, renderY, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                         }
                     }
@@ -658,57 +717,63 @@ int main() {
 
             float pRenderX = (player.getRealX() - cam.x - 0.25f + camShakeX) * TILE_SIZE;
             float pRenderY = (player.getRealY() - cam.y + camShakeY) * TILE_SIZE;
-            static bool facingLeft = false;
 
-            static float frameTimer = 0.0f;
-            static int currentFrame = 0;
-            frameTimer += GetFrameTime();
+            // ==========================================
+            // 🎨 骑士全新渲染分发 (Knight Renderer)
+            // ==========================================
+            if (jumpAnimTimer > 0.0f) jumpAnimTimer -= dt;
+            if (landAnimTimer > 0.0f) landAnimTimer -= dt;
 
-            static bool isFacingLeftNow = false;
-            if (!player.getIsDashing() && !isAttacking) {
-                if (IsKeyDown(KEY_A)) isFacingLeftNow = true;
-                else if (IsKeyDown(KEY_D)) isFacingLeftNow = false;
-            }
-            Texture2D activeTex = texStand;
+            vector<Texture2D>* activeFrameArray = &knightStand;
+            bool pFlipX = (player.getFacingDirection() == -1);
             int overrideFrame = -1;
             int totalFrames = 2;
             bool useSpecialSingleFrame = false;
 
-            if (player.getIsFocusing()) {
-                activeTex = texHeal; totalFrames = 1; overrideFrame = 0; useSpecialSingleFrame = true;
+            int moveDir = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
+
+            if (player.getIsFocusing()) { activeFrameArray = &knightHeal; totalFrames = 1; useSpecialSingleFrame = true; }
+            else if (castVisualTimer > 0.0f) { activeFrameArray = &knightCast; totalFrames = 1; useSpecialSingleFrame = true; }
+            else if (isAttacking) {
+                if (currentAttackType == 1) { activeFrameArray = &knightPogo; totalFrames = 4; }
+                else if (currentAttackType == 2) { activeFrameArray = &knightUpAttack; totalFrames = 3; }
+                else { activeFrameArray = &knightAttack; totalFrames = 3; }
+                overrideFrame = attackFrame;
             }
-            else if (castVisualTimer > 0.0f) {
-                activeTex = texCast; totalFrames = 1; overrideFrame = 0; useSpecialSingleFrame = true;
-            }
-            else if (isPogoAttacking) { activeTex = texPogo; totalFrames = POGO_TOTAL_FRAMES; overrideFrame = attackFrame; }
-            else if (isAttacking) { activeTex = texAttack; totalFrames = ATTACK_TOTAL_FRAMES; overrideFrame = attackFrame; }
-            else if (player.getIsDashing()) { activeTex = texRun; totalFrames = 5; }
+            else if (player.getIsDashing()) { activeFrameArray = &knightRun; totalFrames = 5; }
             else if (!player.getIsGrounded()) {
-                float vy = player.getVelocityY();
-                if (vy < -5.0f) activeTex = texJumpUp;
-                else if (vy < 5.0f) activeTex = texJumpMid;
-                else activeTex = texFall;
-                totalFrames = 1; overrideFrame = 0;
+                if (jumpAnimTimer > 0.0f) {
+                    activeFrameArray = &knightJump; totalFrames = 2;
+                    overrideFrame = (jumpAnimTimer > 0.1f) ? 0 : 1;
+                }
+                else if (player.getVelocityY() < 0.0f) { activeFrameArray = &knightUp; totalFrames = 1; }
+                else { activeFrameArray = &knightFall; totalFrames = 1; }
+            }
+            else if (landAnimTimer > 0.0f && moveDir == 0) {
+                activeFrameArray = &knightLand; totalFrames = 2;
+                overrideFrame = (landAnimTimer > 0.1f) ? 0 : 1;
             }
             else if (IsKeyDown(KEY_A) || IsKeyDown(KEY_D)) {
-                if (IsKeyDown(KEY_LEFT_SHIFT)) { activeTex = texRun; totalFrames = 5; }
-                else { activeTex = texWalk; totalFrames = 3; }
+                if (IsKeyDown(KEY_LEFT_SHIFT)) { activeFrameArray = &knightRun; totalFrames = 5; }
+                else { activeFrameArray = &knightWalk; totalFrames = 4; }
             }
-            else { activeTex = texStand; totalFrames = 2; }
+            else {
+                activeFrameArray = &knightStand; totalFrames = 2;
+            }
 
-            static unsigned int lastTexId = activeTex.id;
-            if (activeTex.id != lastTexId) {
+            if (activeFrameArray != lastFrameArray) {
                 currentFrame = 0;
                 frameTimer = 0.0f;
-                lastTexId = activeTex.id;
+                lastFrameArray = activeFrameArray;
             }
 
             float currentFrameTime = 0.12f;
-            if (activeTex.id == texStand.id) currentFrameTime = 0.40f;
-            else if (activeTex.id == texRun.id) currentFrameTime = 0.08f;
-            else if (activeTex.id == texWalk.id) currentFrameTime = 0.16f;
+            if (activeFrameArray == &knightStand) currentFrameTime = 0.40f;
+            else if (activeFrameArray == &knightRun) currentFrameTime = 0.08f;
+            else if (activeFrameArray == &knightWalk) currentFrameTime = 0.16f;
 
             if (overrideFrame == -1) {
+                frameTimer += dt;
                 if (frameTimer >= currentFrameTime) {
                     currentFrame = (currentFrame + 1) % totalFrames;
                     frameTimer = 0.0f;
@@ -716,26 +781,28 @@ int main() {
             }
 
             int frameToDraw = (overrideFrame != -1) ? overrideFrame : currentFrame;
-            if (frameToDraw >= totalFrames) frameToDraw = 0;
+            if (frameToDraw >= activeFrameArray->size()) frameToDraw = activeFrameArray->size() - 1;
+
+            Texture2D curFrameTex = (*activeFrameArray)[frameToDraw];
+
             if (player.getIsFocusing()) {
                 float focusPulse = (sin(GetTime() * 15.0f) + 1.0f) * 0.5f;
                 DrawCircleLines(pRenderX + TILE_SIZE / 2, pRenderY + TILE_SIZE / 2, TILE_SIZE * focusPulse, { 255, 255, 255, 150 });
             }
 
+            // 轨迹生成逻辑
             if (player.getIsDashing()) {
-                static float dashTrailTimer = 0.0f;
-                dashTrailTimer += GetFrameTime();
+                dashTrailTimer += dt;
                 if (dashTrailTimer >= 0.04f) {
                     dashTrailTimer = 0.0f;
-                    dashTrails.push_back({ activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.35f, 0.35f });
+                    dashTrails.push_back({ curFrameTex, 0, 1, player.getRealX(), player.getRealY(), pFlipX, 0.35f, 0.35f });
                 }
             }
-            else if (activeTex.id == texRun.id && !isAttacking && !isPogoAttacking) {
-                static float runTrailTimer = 0.0f;
-                runTrailTimer += GetFrameTime();
+            else if (activeFrameArray == &knightRun && !isAttacking) {
+                runTrailTimer += dt;
                 if (runTrailTimer >= 0.06f) {
                     runTrailTimer = 0.0f;
-                    dashTrails.push_back({ activeTex, frameToDraw, totalFrames, player.getRealX(), player.getRealY(), facingLeft, 0.25f, 0.4f });
+                    dashTrails.push_back({ curFrameTex, 0, 1, player.getRealX(), player.getRealY(), pFlipX, 0.25f, 0.4f });
                 }
             }
 
@@ -744,23 +811,26 @@ int main() {
                 float tRenderY = (trail.worldY - cam.y + camShakeY) * TILE_SIZE;
                 unsigned char alpha = (unsigned char)(200 * (trail.life / trail.maxLife));
                 Color trailColor = { 50, 150, 255, alpha };
-                DrawSpriteFrame(trail.tex, trail.frameIndex, trail.totalFrames, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
+                DrawSpriteFrame(trail.tex, 0, 1, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
             }
 
-            if (useSpecialSingleFrame && activeTex.id != 0) {
-                float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
-                float renderW = TILE_SIZE * 1.5f * energyShake;
-                float renderH = TILE_SIZE * 1.5f * energyShake;
-                float offsetX = pRenderX - (renderW - TILE_SIZE) / 2.0f;
-                float offsetY = pRenderY - (renderH - TILE_SIZE) / 2.0f;
+            // 本体绘制
+            if (curFrameTex.id != 0) {
+                if (useSpecialSingleFrame) {
+                    float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
+                    float renderW = TILE_SIZE * 1.5f * energyShake;
+                    float renderH = TILE_SIZE * 1.5f * energyShake;
+                    float offsetX = pRenderX - (renderW - TILE_SIZE) / 2.0f;
+                    float offsetY = pRenderY - (renderH - TILE_SIZE) / 2.0f;
 
-                DrawTexExact(activeTex, offsetX, offsetY, renderW, renderH, WHITE, isFacingLeftNow);
+                    DrawTexExact(curFrameTex, offsetX, offsetY, renderW, renderH, WHITE, pFlipX);
 
-                Color auraColor = (activeTex.id == texHeal.id) ? Color{ 255, 255, 255, 80 } : Color{ 50, 150, 255, 80 };
-                DrawCircle((int)(pRenderX + TILE_SIZE / 2.0f), (int)(pRenderY + TILE_SIZE / 2.0f), TILE_SIZE * 1.2f, auraColor);
-            }
-            else if (activeTex.id != 0) {
-                DrawSpriteFrame(activeTex, frameToDraw, totalFrames, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, player.getFacingDirection() == -1);
+                    Color auraColor = (player.getIsFocusing()) ? Color{ 255, 255, 255, 80 } : Color{ 50, 150, 255, 80 };
+                    DrawCircle((int)(pRenderX + TILE_SIZE / 2.0f), (int)(pRenderY + TILE_SIZE / 2.0f), TILE_SIZE * 1.2f, auraColor);
+                }
+                else {
+                    DrawTexExact(curFrameTex, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, pFlipX);
+                }
             }
             else {
                 DrawRectangle(pRenderX, pRenderY, 0.5f * TILE_SIZE, 0.8f * TILE_SIZE, player.isFlickering() ? SKYBLUE : BLUE);
@@ -769,10 +839,7 @@ int main() {
             // ==========================================
             // ⚔️ 终极刀光渲染管线 (Slash VFX)
             // ==========================================
-// ==========================================
-            // ⚔️ 终极刀光渲染管线 (Slash VFX)
-            // ==========================================
-            if (isAttacking || isPogoAttacking) {
+            if (isAttacking) {
                 int vfxFrame = attackFrame;
 
                 if (vfxFrame >= 0 && vfxFrame < 4) {
@@ -787,26 +854,26 @@ int main() {
                         Rectangle destRec;
                         Vector2 origin = { slashW / 2.0f, slashH / 2.0f };
 
-                        // 🌟 核心修复 1：绝对物理朝向！从底层获取骑士真实方向（1为右，-1为左）
                         int pDir = player.getFacingDirection();
-
-                        // 🌟 核心修复 2：原图是“U”型，向右砍必须顺时针转 90 度变成 “)”
-                        float baseRotation = -90.0f; // 如果还是歪的，就改这里（比如 45.0f 或 135.0f）
+                        float baseRotation = -90.0f;
                         float finalRotation = baseRotation;
 
-                        if (isPogoAttacking) {
+                        if (currentAttackType == 1) { // 下劈
                             destRec = { pRenderX + TILE_SIZE / 2.0f, pRenderY + TILE_SIZE * 1.2f, slashW, slashH };
                             finalRotation += 90.0f;
                             destRec.height *= 0.8f;
                         }
-                        else {
-                            // 严格根据物理朝向，决定刀光画在身前多远
-                            float offsetX = pDir * TILE_SIZE * 1.2f;
+                        else if (currentAttackType == 2) { // 上挑
+                            destRec = { pRenderX + TILE_SIZE / 2.0f, pRenderY - TILE_SIZE * 0.5f, slashW, slashH };
+                            finalRotation -= 90.0f;
+                        }
+                        else { // 平砍方向锁
+                            float offsetX = lockedAttackDir * TILE_SIZE * 1.2f;
                             destRec = { pRenderX + TILE_SIZE / 2.0f + offsetX, pRenderY + TILE_SIZE / 2.0f, slashW, slashH };
 
-                            if (pDir == -1) { // 如果朝左
-                                srcRec.width *= -1.0f;         // 水平镜像图片
-                                finalRotation = -baseRotation; // 角度取反
+                            if (lockedAttackDir == -1) {
+                                srcRec.width *= -1.0f;
+                                finalRotation = -baseRotation;
                             }
                         }
 
@@ -822,7 +889,6 @@ int main() {
             BeginBlendMode(BLEND_ADDITIVE);
             for (auto it = activeImpacts.begin(); it != activeImpacts.end(); ) {
                 it->timer += dt;
-                // 每帧特效停留 0.04 秒 (极速炸裂)
                 if (it->timer > 0.04f) {
                     it->frame++;
                     it->timer = 0.0f;
@@ -837,7 +903,6 @@ int main() {
                         float renderX = (it->x - cam.x + camShakeX) * TILE_SIZE;
                         float renderY = (it->y - cam.y + camShakeY) * TILE_SIZE;
 
-                        // 命中十字爆的大小控制
                         float sizeW = TILE_SIZE * 2.2f;
                         float sizeH = TILE_SIZE * 2.2f;
 
@@ -845,14 +910,12 @@ int main() {
                         Rectangle destRec = { renderX, renderY, sizeW, sizeH };
                         Vector2 origin = { sizeW / 2.0f, sizeH / 2.0f };
 
-                        // 画出十字爆，带上生成时的随机旋转角度
                         DrawTexturePro(tex, srcRec, destRec, origin, it->rotation, { 255, 255, 255, 255 });
                     }
                     ++it;
                 }
             }
             EndBlendMode();
-
 
             if (player.getHealFlashTimer() > 0.0f) {
                 unsigned char flashAlpha = (unsigned char)(255.0f * (player.getHealFlashTimer() / 0.3f));
@@ -889,9 +952,43 @@ int main() {
 
             DrawTextEx(myFont, combatLog.c_str(), { uiX, uiY + 60 }, 20, 1.0f, WHITE);
         }
+        else if (currentState == SETTINGS) {
+            ClearBackground({ 20, 20, 30, 255 });
+            DrawTextEx(myFont, "SETTINGS", { (float)(screenWidth / 2 - 100), (float)(screenHeight / 2 - 150) }, 50, 1.0f, LIGHTGRAY);
+
+            Rectangle btnBack = { screenWidth / 2.0f - 60, screenHeight / 2.0f + 160, 120, 50 };
+            Rectangle btnBgmDown = { screenWidth / 2.0f + 60, screenHeight / 2.0f - 40, 40, 40 };
+            Rectangle btnBgmUp = { screenWidth / 2.0f + 110, screenHeight / 2.0f - 40, 40, 40 };
+            Rectangle btnSfxDown = { screenWidth / 2.0f + 60, screenHeight / 2.0f + 30, 40, 40 };
+            Rectangle btnSfxUp = { screenWidth / 2.0f + 110, screenHeight / 2.0f + 30, 40, 40 };
+
+            DrawTextEx(myFont, TextFormat("BGM Volume: %.0f%%", bgmVolume * 100), { (float)(screenWidth / 2 - 160), (float)(screenHeight / 2 - 50) }, 22, 1.0f, WHITE);
+            DrawRectangleLinesEx(btnBgmDown, 2, GRAY);
+            DrawTextEx(myFont, "-", { btnBgmDown.x + 15, btnBgmDown.y + 8 }, 20, 1.0f, GRAY);
+            DrawRectangleLinesEx(btnBgmUp, 2, GRAY);
+            DrawTextEx(myFont, "+", { btnBgmUp.x + 15, btnBgmUp.y + 8 }, 20, 1.0f, GRAY);
+
+            DrawTextEx(myFont, TextFormat("SFX Volume: %.0f%%", sfxVolume * 100), { (float)(screenWidth / 2 - 160), (float)(screenHeight / 2 + 20) }, 22, 1.0f, WHITE);
+            DrawRectangleLinesEx(btnSfxDown, 2, GRAY);
+            DrawTextEx(myFont, "-", { btnSfxDown.x + 15, btnSfxDown.y + 8 }, 20, 1.0f, GRAY);
+            DrawRectangleLinesEx(btnSfxUp, 2, GRAY);
+            DrawTextEx(myFont, "+", { btnSfxUp.x + 15, btnSfxUp.y + 8 }, 20, 1.0f, GRAY);
+
+            DrawRectangleLinesEx(btnBack, 2, GRAY);
+            DrawTextEx(myFont, "BACK", { btnBack.x + 30, btnBack.y + 14 }, 20, 1.0f, GRAY);
+        }
         else if (currentState == GAME_OVER) {
-            DrawTextEx(myFont, "GAME OVER", { 280, 150 }, 40, 1.0f, RED);
-            DrawTextEx(myFont, "The knight has fallen...", { 280, 220 }, 20, 1.0f, LIGHTGRAY);
+            DrawTextEx(myFont, "GAME OVER", { (float)(screenWidth / 2 - 150), 150 }, 50, 1.0f, RED);
+            DrawTextEx(myFont, "The knight has fallen...", { (float)(screenWidth / 2 - 180), 230 }, 20, 1.0f, LIGHTGRAY);
+            DrawTextEx(myFont, "Press ENTER to restart", { (float)(screenWidth / 2 - 160), 320 }, 22, 1.0f, GRAY);
+            DrawTextEx(myFont, "Press ESC to return to menu", { (float)(screenWidth / 2 - 180), 360 }, 22, 1.0f, GRAY);
+        }
+
+        // PAUSED overlay
+        if (currentState == PAUSED) {
+            DrawRectangle(0, 0, screenWidth, screenHeight, { 0, 0, 0, 150 });
+            DrawTextEx(myFont, "PAUSED", { (float)(screenWidth / 2 - 80), (float)(screenHeight / 2 - 40) }, 50, 1.0f, WHITE);
+            DrawTextEx(myFont, "Press ESC to resume", { (float)(screenWidth / 2 - 130), (float)(screenHeight / 2 + 30) }, 18, 1.0f, GRAY);
         }
 
         EndTextureMode();
@@ -923,11 +1020,27 @@ int main() {
     UnloadSound(sfxHeal);
     UnloadFont(myFont);
     UnloadTexture(bgTex);
-    UnloadTexture(texStand);
-    UnloadTexture(texWalk);
-    UnloadTexture(texRun);
-    UnloadTexture(texAttack);
-    // 🌟 卸载全新的 4 帧爬虫散图
+
+    // 🌟 卸载全新的骑士散图帧数组
+    auto UnloadTexArray = [](vector<Texture2D>& texs) {
+        for (auto& t : texs) if (t.id != 0) UnloadTexture(t);
+        texs.clear();
+        };
+
+    UnloadTexArray(knightStand);
+    UnloadTexArray(knightWalk);
+    UnloadTexArray(knightRun);
+    UnloadTexArray(knightAttack);
+    UnloadTexArray(knightUpAttack);
+    UnloadTexArray(knightPogo);
+    UnloadTexArray(knightJump);
+    UnloadTexArray(knightUp);
+    UnloadTexArray(knightFall);
+    UnloadTexArray(knightLand);
+    UnloadTexArray(knightHeal);
+    UnloadTexArray(knightCast);
+
+    // 🌟 卸载 4 帧爬虫散图
     for (int i = 0; i < 4; i++) {
         if (crawlerTex[i].id != 0) UnloadTexture(crawlerTex[i]);
     }
@@ -936,8 +1049,6 @@ int main() {
     UnloadTexture(platformTex);
     UnloadTexture(spikeTex);
     UnloadTexture(bgFar);
-    UnloadTexture(texCast);
-    UnloadTexture(texHeal);
 
     // 🌟 卸载新增特效
     for (int i = 0; i < 4; i++) {
