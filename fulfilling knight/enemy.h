@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <string>
+#include <vector>
 #include "map.h"
 #include "Player.h" 
 
@@ -14,7 +15,7 @@ private:
     int flickerTimer;
 
     int enemyType; // 0: 爬虫, 1: 飞虫, 2: 假骑士 Boss
-    float spawnY;  // 记录出生高度
+    float spawnY;
     int moveDirection, attackCooldown;
     float crawlerSpeed;
     int spawnX;
@@ -23,11 +24,14 @@ private:
     float animTimer;
     int totalFrames;
     int aiState = 0;
-    float stateTimer = 0.0f; // 🌟 统一复用的核心计时器
+    float stateTimer = 0.0f; // 🌟 统一复用中枢计时器
 
-    int bossState;
+    int bossState;    // 🌟 核心修复：状态机(0:待机, 1:起跳, 2:飞跃, 3:前摇, 4:砸地)
     bool isEnraged;   // 二阶段狂暴标志
     int maceSwingDir; // 挥锤方向
+
+    std::vector<Shockwave> shockwaves; // 🌟 归属到 private 独立管理
+
 public:
     Enemy(int startX, int startY, int type);
 
@@ -40,8 +44,6 @@ public:
     int getVelocityX() const { return moveDirection; }
     int getCurrentFrame() const { return currentFrame; }
     int getTotalFrames() const { return totalFrames; }
-
-    std::vector<Shockwave> shockwaves;
 
     Hitbox getHitbox() const {
         if (enemyType == 2) {

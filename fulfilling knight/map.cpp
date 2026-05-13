@@ -9,9 +9,11 @@ Map::Map() : width(0), height(0) {
     playerSpawn = { 0, 0, 10 };
     goalPoint = { 0, 0, 11 };
 }
+
 Map::~Map() {
     unloadTheme();
 }
+
 void Map::unloadTheme() {
     for (auto& layer : bgLayers) {
         if (layer.tex.id != 0) UnloadTexture(layer.tex);
@@ -24,6 +26,7 @@ void Map::unloadTheme() {
     texGroundTop.id = 0;
     texGroundDeep.id = 0;
 }
+
 bool Map::loadLevel(int levelIndex) {
     unloadTheme();
     grid.clear();
@@ -53,7 +56,8 @@ bool Map::loadLevel(int levelIndex) {
 
             if (val == 10) playerSpawn = { x, y, val };
             else if (val == 11) goalPoint = { x, y, val };
-            else if (val == 8 || val == 9) enemySpawns.push_back({ x, y, val }); // 🌟 包含爬虫(8)与飞虫(9)
+            // 🌟 精准捕获：支持爬虫(8)、飞虫(9)以及假骑士Boss(12)！
+            else if (val == 8 || val == 9 || val == 12) enemySpawns.push_back({ x, y, val });
 
             x++;
         }
@@ -65,6 +69,7 @@ bool Map::loadLevel(int levelIndex) {
     height = y;
     file.close();
 
+    // 主题分配中枢
     if (levelIndex == 1) {
         texGroundTop = LoadTexture("bg_plain/plain_grass.png");
         texGroundDeep = LoadTexture("bg_plain/plain_mud.png");
@@ -86,18 +91,12 @@ bool Map::loadLevel(int levelIndex) {
         }
     }
     else if (levelIndex == 3) {
-        // 🌟 专属第三关 Boss 巢穴地表贴图加载
         texGroundTop = LoadTexture("boss_cave/boss_cave_ground.png");
         texGroundDeep = LoadTexture("boss_cave/boss_cave_ground.png");
 
-        // 🌟 核心修复：针对 6 动得最慢(远)，0 动得最快(近) 的特殊命名规则，精准指派滚动速度！
-        // 速度数组对应关系：层6, 层5, 层4, 层3, 层2, 层1, 层0
         float bossSpeeds[7] = { 0.02f, 0.06f, 0.12f, 0.18f, 0.25f, 0.35f, 0.45f };
-
-        // 倒序依次读取 6.png 到 0.png
         for (int i = 6; i >= 0; i--) {
             Texture2D t = LoadTexture(("boss_cave/" + std::to_string(i) + ".png").c_str());
-            // 数组索引映射：当 i=6 时取 bossSpeeds[0] (0.02f)，当 i=0 时取 bossSpeeds[6] (0.45f)
             if (t.id != 0) bgLayers.push_back({ t, bossSpeeds[6 - i] });
         }
     }

@@ -657,13 +657,16 @@ int main() {
                     float renderX = (worldX - cam.x + camShakeX) * TILE_SIZE;
                     float renderY = (worldY - cam.y + camShakeY) * TILE_SIZE;
 
+                    // 在 main.cpp 渲染 Wall 的地方核对这段逻辑：
                     if (t == TileType::Wall) {
                         TileType tileAbove = gameMap.getTileAt(worldX, worldY - 1);
 
-                        if (tileAbove != TileType::Wall && tileAbove != TileType::SpikeUp) {
+                        // 🌟 核心排雷：如果上方是空气，才画带草皮的顶层地面
+                        // 如果上方是 SpikeUp (地刺)，说明这是陷阱底座，直接画深层纯泥土！
+                        if (tileAbove == TileType::Empty) {
                             Texture2D tex = gameMap.getTexGroundTop();
                             if (tex.id != 0) DrawTexExact(tex, renderX, renderY, TILE_SIZE, TILE_SIZE);
-                            else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE, GREEN);
+                            else DrawRectangle(renderX, renderY, TILE_SIZE, TILE_SIZE, DARKBROWN); // 就算没图也画褐色，拒绝纯绿！
                         }
                         else {
                             Texture2D tex = gameMap.getTexGroundDeep();

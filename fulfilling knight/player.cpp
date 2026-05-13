@@ -311,16 +311,20 @@ void Player::updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, 
         it->x += (it->speed * it->facingDir) * dt;
         it->lifeTimer -= dt;
 
+        bool hitEnemy = false;
         for (auto& target : enemies) {
             if (target.isAlive() && it->getHitbox().intersects(target.getHitbox())) {
                 if (!target.isFlickering()) {
-                    target.takeDamage(40, it->x, gameMap);
+                    // 🌟 造成真实法术伤害，避免直接访问野指针
+                    target.takeDamage(40, (int)it->x, gameMap);
+                    hitEnemy = true;
                 }
             }
         }
 
-        TileType frontTile = gameMap.getTileAt(it->x + (it->facingDir == 1 ? 1.0f : 0.0f), it->y);
-        if (frontTile == TileType::Wall || it->lifeTimer <= 0) {
+        TileType frontTile = gameMap.getTileAt((int)(it->x + (it->facingDir == 1 ? 1.0f : 0.0f)), (int)it->y);
+        // 如果法术打中墙壁、超时或打中敌人，完美安全销毁
+        if (frontTile == TileType::Wall || it->lifeTimer <= 0 || hitEnemy) {
             it = projectiles.erase(it);
         }
         else {
