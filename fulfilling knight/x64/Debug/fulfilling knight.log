@@ -1,4 +1,42 @@
-﻿  main.cpp
+﻿  enemy.cpp
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x293 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x295 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x296 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x297 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x298 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x29d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x29e 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x468 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46a 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46b 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46c 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“enemy.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\enemy.cpp(83,28): warning C4244: “=”: 从“double”转换到“float”，可能丢失数据
+  main.cpp
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x293 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
   (编译源文件“main.cpp”)
   
@@ -33,39 +71,6 @@ C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warn
   (编译源文件“main.cpp”)
   
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x124 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x126 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x127 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x12d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x130 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x149 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x14a 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x14c 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x14d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x14e 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
-  (编译源文件“main.cpp”)
-  
-C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Enemy.h(1,1): warning C4828: 文件包含在偏移 0x154 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
   (编译源文件“main.cpp”)
   
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(501,64): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
@@ -128,5 +133,45 @@ C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(950,36): w
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(950,27): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(951,41): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
 C:\vs studio cpp\project\fulfilling knight\fulfilling knight\main.cpp(951,32): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
-LINK : warning LNK4098: 默认库“MSVCRT”与其他库的使用冲突；请使用 /NODEFAULTLIB:library
+  player.cpp
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x293 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x295 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x296 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x297 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x298 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x29d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x29e 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x468 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46a 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46b 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46c 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\Player.h(1,1): warning C4828: 文件包含在偏移 0x46d 处开始的字符，该字符在当前源字符集中无效(代码页 65001)。
+  (编译源文件“player.cpp”)
+  
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\player.cpp(304,45): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\player.cpp(309,94): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+C:\vs studio cpp\project\fulfilling knight\fulfilling knight\player.cpp(309,54): warning C4244: “参数”: 从“float”转换到“int”，可能丢失数据
+  正在生成代码...
   fulfilling knight.vcxproj -> C:\vs studio cpp\project\fulfilling knight\x64\Debug\fulfilling knight.exe

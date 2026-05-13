@@ -43,7 +43,6 @@ struct DashTrail {
     float maxLife;
 };
 
-// 🌟 新增：独立存活的命中十字爆特效
 struct HitImpactVFX {
     float x;
     float y;
@@ -82,10 +81,11 @@ int main() {
     bgms.push_back(LoadMusicStream("bgm0.mp3"));
     bgms.push_back(LoadMusicStream("bgm1.mp3"));
     bgms.push_back(LoadMusicStream("bgm2.mp3"));
+    bgms.push_back(LoadMusicStream("bgm3.mp3")); // 🌟 新增：第三关专属高燃决战 BGM！
     for (auto& m : bgms) SetMusicVolume(m, 0.4f);
     SetMusicVolume(bgms[0], 0.5f);
     SetMusicVolume(bgms[1], 0.6f);
-
+    SetMusicVolume(bgms[3], 0.5f);
     int currentBgmIndex = 0;
     PlayMusicStream(bgms[currentBgmIndex]);
 
@@ -121,33 +121,40 @@ int main() {
     vector<Texture2D> knightRun;
     for (int i = 0; i < 5; i++) knightRun.push_back(LoadTexture(TextFormat("run%d.png", i)));
 
-    vector<Texture2D> knightAttack; // 单段平砍 (3帧)
+    vector<Texture2D> knightAttack;
     for (int i = 0; i < 3; i++) knightAttack.push_back(LoadTexture(TextFormat("attack%d.png", i)));
 
-    vector<Texture2D> knightUpAttack; // 上挑 (3帧)
+    vector<Texture2D> knightUpAttack;
     for (int i = 0; i < 3; i++) knightUpAttack.push_back(LoadTexture(TextFormat("upattack%d.png", i)));
 
-    vector<Texture2D> knightPogo; // 下劈 (4帧)
+    vector<Texture2D> knightPogo;
     for (int i = 0; i < 4; i++) knightPogo.push_back(LoadTexture(TextFormat("pogo%d.png", i)));
 
-    // 🌟 空中动态序列
-    vector<Texture2D> knightJump; // 起跳瞬间 (2帧)
+    vector<Texture2D> knightJump;
     for (int i = 0; i < 2; i++) knightJump.push_back(LoadTexture(TextFormat("jump%d.png", i)));
 
-    vector<Texture2D> knightUp; // 空中上升 (1帧)
+    vector<Texture2D> knightUp;
     knightUp.push_back(LoadTexture("up.png"));
 
-    vector<Texture2D> knightFall; // 空中下落 (1帧)
+    vector<Texture2D> knightFall;
     knightFall.push_back(LoadTexture("fall.png"));
 
-    vector<Texture2D> knightLand; // 落地缓冲 (2帧)
+    vector<Texture2D> knightLand;
     for (int i = 0; i < 2; i++) knightLand.push_back(LoadTexture(TextFormat("land%d.png", i)));
 
-    // 法术动画 (沿用单图加载入 vector)
     vector<Texture2D> knightHeal;
     knightHeal.push_back(LoadTexture("heal.png"));
     vector<Texture2D> knightCast;
     knightCast.push_back(LoadTexture("cast_spell.png"));
+
+    // ==========================================
+    // 🌟 假骑士 Boss 专属 5 张精准动作大图
+    // ==========================================
+    Texture2D texBossStand = LoadTexture("boss_stand.png");
+    Texture2D texBossJump = LoadTexture("boss_jump.png");
+    Texture2D texBossAir = LoadTexture("boss_air.png");
+    Texture2D texBossSwing = LoadTexture("boss_swing.png"); // 蓄力后仰
+    Texture2D texBossHit = LoadTexture("boss_hit.png");   // 锤击地面释放冲击波！
 
     Texture2D crawlerTex[4];
     for (int i = 0; i < 4; i++) crawlerTex[i] = LoadTexture(("crawler" + to_string(i) + ".png").c_str());
@@ -204,10 +211,9 @@ int main() {
     int lockedAttackDir = 1;
     int attackFrame = 0;
     float attackAnimTimer = 0.0f;
-    int currentAttackType = 0; // 0=平砍, 1=下劈, 2=上挑
+    int currentAttackType = 0;
     float castVisualTimer = 0.0f;
 
-    // Animation & input state
     float stepTimer = 0.4f;
     bool lastJump = false;
     bool wasGroundedLastFrame = true;
@@ -220,7 +226,6 @@ int main() {
     float bgmVolume = 0.5f;
     float sfxVolume = 1.0f;
 
-    // 🌟 新增：跳跃与落地的过渡动画计时器
     float jumpAnimTimer = 0.0f;
     float landAnimTimer = 0.0f;
     vector<Texture2D>* lastFrameArray = nullptr;
@@ -279,10 +284,11 @@ int main() {
                 for (const auto& s : gameMap.getEnemySpawns()) {
                     if (s.type == 8) enemies.emplace_back(s.x, s.y, 0);
                     else if (s.type == 9) enemies.emplace_back(s.x, s.y, 1);
+                    // 🌟 假设关卡里放了 Boss (比如你在 map3.csv 放了类型 12)
+                    else if (s.type == 12) enemies.emplace_back(s.x, s.y, 2);
                 }
                 mapLoaded = true;
 
-                // Reset animation/input state for new level
                 stepTimer = 0.4f;
                 lastJump = false;
                 wasGroundedLastFrame = true;
@@ -341,7 +347,6 @@ int main() {
             player.setMoveIntent(moveDir);
             player.setRunningMode(IsKeyDown(KEY_LEFT_SHIFT));
 
-            // 🌟 触发起跳动画
             bool jump = IsKeyDown(KEY_K);
             if (jump && !lastJump) {
                 if (player.getIsGrounded() || player.getJumpCount() < 2) {
@@ -352,11 +357,10 @@ int main() {
             player.processJump(jump && !lastJump, jump, IsKeyDown(KEY_S));
             lastJump = jump;
 
-            // 🌟 精简版单段动作攻击逻辑
             if (IsKeyPressed(KEY_J) && !isAttacking && !player.getIsDashing() && attackCd <= 0) {
                 PlaySound(sfxSwing);
                 isAttacking = true;
-                lockedAttackDir = player.getFacingDirection(); // 瞬间锁死当前朝向！
+                lockedAttackDir = player.getFacingDirection();
                 attackFrame = 0;
                 attackAnimTimer = 0.0f;
 
@@ -382,11 +386,9 @@ int main() {
                     }
                 }
 
-                // 根据类型获取总帧数 (平砍3, 下劈4, 上挑3)
                 int totalFrames = 3;
                 if (currentAttackType == 1) totalFrames = 4;
 
-                // 🌟 所有攻击，第 1 到 2 帧都具有强力判定！
                 bool isActiveFrame = (attackFrame >= 1 && attackFrame <= 2);
 
                 if (isActiveFrame) {
@@ -441,7 +443,6 @@ int main() {
 
                 player.update(gameMap, dt);
 
-                // 🌟 触发落地缓冲动画
                 bool isGroundedNow = player.getIsGrounded();
                 if (!wasGroundedLastFrame && isGroundedNow) {
                     PlaySound(sfxLand);
@@ -454,7 +455,18 @@ int main() {
                     safeX = player.getRealX(); safeY = player.getRealY();
                 }
 
-                for (auto& e : enemies) e.update(gameMap, player, dt);
+                // 🌟 统一更新怪物逻辑，捕获假骑士引发的极致震屏
+                for (auto& e : enemies) {
+                    e.update(gameMap, player, dt);
+                    // 如果假骑士刚刚猛烈砸地 (bossState == 4 刚触发)，或者落地产生强大后座力
+                    if (e.getName() == "False Knight") {
+                        int bState = e.getBossState();
+                        // 借用 stateTimer 刚进入某状态的时间点判定震屏
+                        if (bState == 4 && e.isFlickering()) {
+                            camShakeY = 0.35f; // 大震感
+                        }
+                    }
+                }
 
                 for (auto it = hitParticles.begin(); it != hitParticles.end(); ) {
                     it->velocity.y += 40.0f * dt;
@@ -692,25 +704,62 @@ int main() {
                 float tailStart = p.facingDir == 1 ? pRenderX - tailLength : pRenderX;
                 DrawRectangle(tailStart, pRenderY - 10, tailLength, 20, { 200, 220, 255, 100 });
             }
-            for (const auto& e : enemies) {
+
+            // ==========================================
+            // 🛡️ 实体/怪物/Boss 全景渲染管线
+            // ==========================================
+            for (auto& e : enemies) {
                 if (e.isAlive()) {
-                    float renderX = (e.getRealX() - cam.x - 0.10f + camShakeX) * TILE_SIZE;
+                    float renderX = (e.getRealX() - cam.x + camShakeX) * TILE_SIZE;
+                    float renderY = (e.getRealY() - cam.y + camShakeY) * TILE_SIZE;
                     bool eFacingLeft = (e.getVelocityX() < 0);
 
                     if (e.getName() == "Flyer" && flyerTex.id != 0) {
-                        float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
-                        DrawSpriteFrame(flyerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX, renderY - 10.0f, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                        DrawSpriteFrame(flyerTex, e.getCurrentFrame(), e.getTotalFrames(), renderX - 0.1f * TILE_SIZE, renderY + 0.4f * TILE_SIZE - 10.0f, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
                     }
                     else if (e.getName() == "Crawler") {
                         Texture2D cTex = crawlerTex[e.getCurrentFrame()];
                         if (cTex.id != 0) {
-                            float renderY = (e.getRealY() - cam.y + 0.10f + camShakeY) * TILE_SIZE;
-                            DrawSpriteFrame(cTex, 0, 1, renderX, renderY, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                            DrawSpriteFrame(cTex, 0, 1, renderX - 0.1f * TILE_SIZE, renderY + 0.1f * TILE_SIZE, 1.0f * TILE_SIZE, 1.0f * TILE_SIZE, e.isFlickering() ? RED : WHITE, eFacingLeft);
+                        }
+                    }
+                    // 🌟 假骑士 False Knight 5张动作分流渲染
+                    else if (e.getName() == "False Knight") {
+                        int state = e.getBossState();
+                        Texture2D activeBossTex = texBossStand; // 默认
+
+                        if (state == 1) activeBossTex = texBossJump;
+                        else if (state == 2) activeBossTex = texBossAir;
+                        else if (state == 3) activeBossTex = texBossSwing; // 举锤蓄力
+                        else if (state == 4) activeBossTex = texBossHit;   // 轰击地面释放冲击波
+
+                        if (activeBossTex.id != 0) {
+                            // 3:2 宽高比例放大映射：绘制宽度约 4.5 格，高度约 3.0 格
+                            float drawW = TILE_SIZE * 4.5f;
+                            float drawH = TILE_SIZE * 3.0f;
+                            bool flipBoss = (e.getVelocityX() > 0); // 原图朝左，向右跑时需翻转
+
+                            // 完美中心锚点映射在两脚之间的底部地面
+                            DrawTexExact(activeBossTex, renderX - drawW / 2.0f, renderY - drawH, drawW, drawH, e.isFlickering() ? RED : WHITE, flipBoss);
+                        }
+                        else {
+                            // 缺图兜底紫红色威压巨兽
+                            DrawRectangle(renderX - 1.25f * TILE_SIZE, renderY - 3.0f * TILE_SIZE, 2.5f * TILE_SIZE, 3.0f * TILE_SIZE, e.isFlickering() ? RED : PURPLE);
+                        }
+
+                        // 🌟 渲染由 Boss 释放的独立滚动冲击波 (Shockwaves)
+                        for (auto& wave : e.getShockwaves()) {
+                            float wRenderX = (wave.x - cam.x + camShakeX) * TILE_SIZE;
+                            float wRenderY = (wave.y - cam.y + camShakeY) * TILE_SIZE;
+                            float waveH = wave.height * TILE_SIZE; // 1.8格高的死神弧线
+
+                            // 借助半透明月弧营造极速冲击效果
+                            DrawEllipse(wRenderX, wRenderY - waveH / 2.0f, 0.4f * TILE_SIZE, waveH / 2.0f, { 255, 255, 255, 220 });
+                            DrawEllipseLines(wRenderX, wRenderY - waveH / 2.0f, 0.45f * TILE_SIZE, waveH / 2.0f + 2, SKYBLUE);
                         }
                     }
                     else {
-                        float renderY = (e.getRealY() - cam.y + 0.40f + camShakeY) * TILE_SIZE;
-                        DrawRectangle(renderX, renderY, 0.8f * TILE_SIZE, 0.8f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
+                        DrawRectangle(renderX - 0.1f * TILE_SIZE, renderY + 0.4f * TILE_SIZE, 0.8f * TILE_SIZE, 0.8f * TILE_SIZE, e.isFlickering() ? ORANGE : RED);
                     }
                 }
             }
@@ -790,7 +839,6 @@ int main() {
                 DrawCircleLines(pRenderX + TILE_SIZE / 2, pRenderY + TILE_SIZE / 2, TILE_SIZE * focusPulse, { 255, 255, 255, 150 });
             }
 
-            // 轨迹生成逻辑
             if (player.getIsDashing()) {
                 dashTrailTimer += dt;
                 if (dashTrailTimer >= 0.04f) {
@@ -814,7 +862,6 @@ int main() {
                 DrawSpriteFrame(trail.tex, 0, 1, tRenderX, tRenderY, TILE_SIZE, TILE_SIZE, trailColor, trail.facingLeft);
             }
 
-            // 本体绘制
             if (curFrameTex.id != 0) {
                 if (useSpecialSingleFrame) {
                     float energyShake = 1.0f + (sin(GetTime() * 40.0f) * 0.03f);
@@ -984,7 +1031,6 @@ int main() {
             DrawTextEx(myFont, "Press ESC to return to menu", { (float)(screenWidth / 2 - 180), 360 }, 22, 1.0f, GRAY);
         }
 
-        // PAUSED overlay
         if (currentState == PAUSED) {
             DrawRectangle(0, 0, screenWidth, screenHeight, { 0, 0, 0, 150 });
             DrawTextEx(myFont, "PAUSED", { (float)(screenWidth / 2 - 80), (float)(screenHeight / 2 - 40) }, 50, 1.0f, WHITE);
@@ -1021,7 +1067,6 @@ int main() {
     UnloadFont(myFont);
     UnloadTexture(bgTex);
 
-    // 🌟 卸载全新的骑士散图帧数组
     auto UnloadTexArray = [](vector<Texture2D>& texs) {
         for (auto& t : texs) if (t.id != 0) UnloadTexture(t);
         texs.clear();
@@ -1040,7 +1085,13 @@ int main() {
     UnloadTexArray(knightHeal);
     UnloadTexArray(knightCast);
 
-    // 🌟 卸载 4 帧爬虫散图
+    // 🌟 卸载 Boss 5 张精准资产
+    UnloadTexture(texBossStand);
+    UnloadTexture(texBossJump);
+    UnloadTexture(texBossAir);
+    UnloadTexture(texBossSwing);
+    UnloadTexture(texBossHit);
+
     for (int i = 0; i < 4; i++) {
         if (crawlerTex[i].id != 0) UnloadTexture(crawlerTex[i]);
     }
@@ -1050,7 +1101,6 @@ int main() {
     UnloadTexture(spikeTex);
     UnloadTexture(bgFar);
 
-    // 🌟 卸载新增特效
     for (int i = 0; i < 4; i++) {
         if (slashTex[i].id != 0) UnloadTexture(slashTex[i]);
         if (hitImpactTex[i].id != 0) UnloadTexture(hitImpactTex[i]);

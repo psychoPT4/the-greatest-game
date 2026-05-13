@@ -6,54 +6,66 @@
 extern std::string combatLog;
 
 Enemy::Enemy(int startX, int startY, int type)
-    : name(type == 0 ? "Crawler" : "Flyer"), x(startX), y(startY),
+// 🌟 核心修复 1：打通实体真实名称映射，确保主程序正确识别 Boss
+    : name(type == 0 ? "Crawler" : (type == 1 ? "Flyer" : "False Knight")), x(startX), y(startY),
     realX((float)startX), realY((float)startY), spawnX(startX), spawnY((float)startY),
     enemyType(type),
     alive(true), flickerTimer(0), moveDirection(1), attackCooldown(0),
     crawlerSpeed(1.5f), currentFrame(0), animTimer(0.0f) {
 
-    hp = (enemyType == 0) ? 30 : 20;
+    if (enemyType == 0) hp = 30;
+    else if (enemyType == 1) hp = 20;
+    else if (enemyType == 2) hp = 450; // 🌟 假骑士巨量生命值
+
     maxHp = hp;
-    baseDamage = 25;
+    baseDamage = (enemyType == 2) ? 25 : 25;
 
-    // 🌟 核心修改 1：现在不管是爬虫还是飞虫，大家都是 4 帧动作了！
-    totalFrames = 4;
-
-    // 🌟 核心修改 2：碰撞箱比例升级！
     if (enemyType == 0) {
-        // 爬虫 (1:1的身材，把高度拉满到 0.8)
-        hbWidth = 0.8f;
-        hbHeight = 0.8f;
+        totalFrames = 4; hbWidth = 0.8f; hbHeight = 0.8f;
     }
-    else {
-        // 飞虫保持不变
-        hbWidth = 0.8f;
-        hbHeight = 0.5f;
+    else if (enemyType == 1) {
+        totalFrames = 4; hbWidth = 0.8f; hbHeight = 0.5f;
+    }
+    else if (enemyType == 2) {
+        // 🌟 假骑士完整属性与初始状态分配
+        totalFrames = 1;
+        hbWidth = 2.5f;
+        hbHeight = 3.0f;
+        bossState = 0;
+        stateTimer = 1.0f;
+        isEnraged = false;
+        crawlerSpeed = 16.0f; // 空中飞跃的极速移动系数
     }
 
-    currentFrame = GetRandomValue(0, totalFrames - 1);
+    currentFrame = (totalFrames > 1) ? GetRandomValue(0, totalFrames - 1) : 0;
 }
 
 bool Enemy::takeDamage(int damage, int sourceX, const Map& gameMap) {
-    // 🌟 如果怪物已经死了，或者还在无敌时间，返回 false（表示这刀砍在残影上了）
     if (flickerTimer > 0 || !alive) return false;
 
     hp -= damage;
     if (hp <= 0) {
-        alive = false; combatLog = "击杀目标！ ";
+        alive = false;
+        combatLog = (enemyType == 2) ? "击败假骑士！ " : "击杀目标！ ";
     }
     else {
-        // 🌟 核心修复：把 5 改成 15！
-        // 既然我们的剑刃判定变持久了，怪物的无敌帧也要增加到 0.25 秒，防止被同一刀扣两次血！
         flickerTimer = 15;
-        int knockbackDir = (x > sourceX) ? 1 : -1;
-        TileType backWall = gameMap.getTileAt(x + knockbackDir, y);
-        if (backWall != TileType::Wall) {
-            realX += knockbackDir * 0.5f;
-            x = (int)std::round(realX);
+        // 挨打顿帧：Boss在思考待机时受击，稍微增加决策延迟增加受击打击感
+        if (enemyType == 2 && bossState == 0) {
+            stateTimer += 0.05f;
+        }
+
+        // 普通小怪受击后退，沉重的巨兽 Boss 不被普通攻击推退
+        if (enemyType != 2) {
+            int knockbackDir = (x > sourceX) ? 1 : -1;
+            TileType backWall = gameMap.getTileAt(x + knockbackDir, y);
+            if (backWall != TileType::Wall) {
+                realX += knockbackDir * 0.5f;
+                x = (int)std::round(realX);
+            }
         }
     }
-    return true; // 🌟 返回 true，告诉主角：你确实砍到真肉了，赶紧爆火花！
+    return true;
 }
 
 void Enemy::update(const Map& gameMap, Player& player, float dt) {
@@ -65,93 +77,77 @@ void Enemy::update(const Map& gameMap, Player& player, float dt) {
     float distToPlayerY = std::abs(player.getRealY() - realY);
 
     // ==========================================
-        // 🦋 飞虫逻辑 (Type 1)
-        // ==========================================
+    // 🦋 飞虫逻辑 (Type 1)
+    // ==========================================
     if (enemyType == 1) {
-        // 🌟 索敌雷达放大：X轴 10格内，Y轴 5格内均可发现玩家
-        float distToPlayerX = std::abs(player.getRealX() - realX);
-        float distToPlayerY = std::abs(player.getRealY() - realY);
         bool inSight = (distToPlayerX <= 10.0f && distToPlayerY <= 5.0f);
 
-        if (aiState == 0) { // 🚶 巡逻状态
-            // 无视重力，上下正弦波浮动
+        if (aiState == 0) {
             realY = spawnY + sin(GetTime() * 3.0f + spawnX) * 0.5f;
 
             if (inSight) {
-                aiState = 1;               // 发现目标，进入前摇！
-                stateTimer = 0.3f;         // 惊恐停顿 0.3 秒 (尖叫)
+                aiState = 1;
+                stateTimer = 0.3f;
             }
             else {
-                // 缓慢巡逻
                 realX += moveDirection * crawlerSpeed * 0.5f * dt;
-                if (std::abs(realX - spawnX) > 4.0f) moveDirection *= -1; // 飞出 4 格折返
+                if (std::abs(realX - spawnX) > 4.0f) moveDirection *= -1;
             }
         }
-        else if (aiState == 1) { // 💢 发现目标，僵直前摇
-            // 原地颤抖，营造压迫感
+        else if (aiState == 1) {
             realX += (GetRandomValue(-1, 1) * 0.02f);
             stateTimer -= dt;
             if (stateTimer <= 0.0f) {
-                aiState = 2; // 前摇结束，开始追击！
+                aiState = 2;
             }
         }
-        else if (aiState == 2) { // 🩸 狂暴追击状态 (X和Y轴全方位追踪)
-            // 丢失目标 (玩家跑出 14 格远)
+        else if (aiState == 2) {
             if (distToPlayerX > 14.0f || distToPlayerY > 10.0f) {
-                aiState = 3; // 放弃追击，准备回家
+                aiState = 3;
             }
             else {
-                // X轴冲刺飞向玩家
                 moveDirection = (player.getRealX() > realX) ? 1 : -1;
                 realX += moveDirection * crawlerSpeed * 1.8f * dt;
 
-                // 🌟 核心修复：Y轴追踪，飞虫要俯冲下来咬人！
-                float targetY = player.getRealY() - 0.2f; // 瞄准骑士头部稍高一点
+                float targetY = player.getRealY() - 0.2f;
                 if (realY < targetY) realY += crawlerSpeed * 1.5f * dt;
                 else if (realY > targetY) realY -= crawlerSpeed * 1.5f * dt;
             }
         }
-        else if (aiState == 3) { // 🌀 失去目标，飞回出生点
+        else if (aiState == 3) {
             moveDirection = (spawnX > realX) ? 1 : -1;
             realX += moveDirection * crawlerSpeed * 1.0f * dt;
 
             if (realY < spawnY) realY += crawlerSpeed * 1.0f * dt;
             else if (realY > spawnY) realY -= crawlerSpeed * 1.0f * dt;
 
-            // 🌟 核心修复：加个极小误差判定，回到家后完美恢复巡逻
             if (std::abs(realX - spawnX) < 0.5f && std::abs(realY - spawnY) < 0.5f) {
                 aiState = 0;
             }
 
-            // 如果在回家路上又看到玩家，马上回头继续追！
             if (inSight) {
                 aiState = 1;
                 stateTimer = 0.2f;
             }
         }
 
-        // ==========================================
-        // 🧱 墙壁碰撞检测 (防止飞虫卡进泥土里)
-        // ==========================================
         float probeX = realX + moveDirection * (hbWidth / 2.0f + 0.1f);
         if (gameMap.getTileAt((int)probeX, (int)(realY + 0.5f)) == TileType::Wall) {
-            if (aiState == 0 || aiState == 3) moveDirection *= -1; // 巡逻/回家时撞墙转身
-            else realX -= moveDirection * crawlerSpeed * 1.8f * dt; // 追击时被墙挡住 (推离墙体)
+            if (aiState == 0 || aiState == 3) moveDirection *= -1;
+            else realX -= moveDirection * crawlerSpeed * 1.8f * dt;
         }
 
-        // 更新坐标与动画
         x = (int)std::round(realX);
         y = (int)std::round(realY);
 
         animTimer += dt;
-        // 狂暴追击时，翅膀扑腾的速度也会加快！
         float frameDuration = (aiState == 2) ? 0.06f : 0.10f;
         if (animTimer >= frameDuration) {
             currentFrame = (currentFrame + 1) % totalFrames;
             animTimer = 0.0f;
         }
     }
-    else {
+    else if (enemyType == 0) {
         // ==========================================
         // 🪲 爬虫逻辑 (Type 0)
         // ==========================================
@@ -226,6 +222,107 @@ void Enemy::update(const Map& gameMap, Player& player, float dt) {
             currentFrame = (currentFrame + 1) % totalFrames;
             animTimer = 0.0f;
         }
+    }
+    else if (enemyType == 2) {
+        // ==========================================
+        // 🛡️ 假骑士 Boss AI 状态机复刻 (Type 2)
+        // ==========================================
+        // 维护独立的地面滚动冲击波
+        for (auto it = shockwaves.begin(); it != shockwaves.end(); ) {
+            it->x += (it->speed * it->direction) * dt;
+            it->lifeTimer -= dt;
+
+            if (it->lifeTimer <= 0 || gameMap.getTileAt((int)it->x, (int)it->y) == TileType::Wall) {
+                it = shockwaves.erase(it);
+            }
+            else {
+                if (it->getHitbox().intersects(player.getHitbox())) {
+                    player.takeDamage(25, (int)it->x, gameMap);
+                }
+                ++it;
+            }
+        }
+
+        // 沉重的物理重力检测
+        float bottomY = realY;
+        int gridX = (int)std::round(realX);
+        TileType underFoot = gameMap.getTileAt(gridX, (int)(bottomY + 0.05f));
+        bool isBossGrounded = (underFoot == TileType::Wall || underFoot == TileType::Platform);
+
+        if (isBossGrounded && bossState != 2) {
+            realY = std::floor(bottomY);
+        }
+        else {
+            realY += 18.0f * dt;
+        }
+
+        if (hp < maxHp / 2 && !isEnraged) {
+            isEnraged = true;
+        }
+
+        // 核心 AI 状态调度
+        if (bossState == 0) { // 待机逼近 (boss_stand)
+            stateTimer -= dt;
+            moveDirection = (player.getRealX() > realX) ? 1 : -1;
+
+            if (stateTimer <= 0.0f) {
+                // 距离大于5格放毁天灭地冲击波，否则直接大跳换位压杀
+                if (distToPlayerX > 5.0f) {
+                    bossState = 3; // 举锤蓄力
+                    stateTimer = 0.8f;
+                    maceSwingDir = moveDirection;
+                }
+                else {
+                    bossState = 1; // 准备起跳
+                    stateTimer = 0.3f; // 起跳下蹲缓冲
+                }
+            }
+        }
+        else if (bossState == 1) { // 下蹲蓄力准备起跳 (boss_jump)
+            stateTimer -= dt;
+            if (stateTimer <= 0.0f) {
+                bossState = 2; // 腾空跳跃
+                realY -= 0.5f; // 反冲升空
+                moveDirection = (player.getRealX() > realX) ? 1 : -1;
+            }
+        }
+        else if (bossState == 2) { // 腾空飞跃 (boss_air)
+            realX += moveDirection * crawlerSpeed * dt;
+            // 落地震感反馈
+            if (isBossGrounded) {
+                bossState = 0;
+                stateTimer = 1.2f;
+                flickerTimer = 10; // 传递强力着陆后坐力信号触发震屏
+            }
+        }
+        else if (bossState == 3) { // 挥锤蓄力前摇 (boss_swing)
+            stateTimer -= dt;
+            if (stateTimer <= 0.0f) {
+                bossState = 4; // 轰击地面！
+                stateTimer = 0.5f;
+                flickerTimer = 12; // 强烈暴击感触发主程序捕获大震动
+
+                // 🌟 生成沿地面飞驰的死亡冲击波
+                Shockwave wave;
+                wave.x = realX + maceSwingDir * 2.0f;
+                wave.y = realY;
+                wave.speed = isEnraged ? 14.0f : 10.0f;
+                wave.direction = maceSwingDir;
+                wave.lifeTimer = 3.0f;
+                wave.height = 1.8f; // 🌟 峰高 1.8 格，强制长按大跳跨过！
+                shockwaves.push_back(wave);
+            }
+        }
+        else if (bossState == 4) { // 保持砸地后摇姿势 (boss_hit)
+            stateTimer -= dt;
+            if (stateTimer <= 0.0f) {
+                bossState = 0;
+                stateTimer = 1.5f;
+            }
+        }
+
+        x = (int)std::round(realX);
+        y = (int)std::round(realY);
     }
 
     if (getHitbox().intersects(player.getHitbox()) && attackCooldown <= 0) {

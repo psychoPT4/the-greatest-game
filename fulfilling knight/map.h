@@ -18,7 +18,8 @@ enum class TileType {
     SpawnCrawler = 8, // 怪物：爬虫怪出生点
     SpawnFlyer = 9,   // 🌟 新增：飞虫出生点
     SpawnPlayer = 10, // 主角出生点
-    LevelGoal = 11    // 关卡终点传送门
+    LevelGoal = 11 ,  // 关卡终点传送门
+    Spawnboss=12
 };
 
 struct SpawnPoint {

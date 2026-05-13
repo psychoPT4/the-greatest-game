@@ -24,6 +24,19 @@ struct Projectile {
         return { x - 0.5f, x + 1.5f, y - 0.8f, y + 0.8f };
     }
 };
+// 在 Player.h 里的 struct Projectile 下方追加：
+struct Shockwave {
+    float x, y;
+    float speed;
+    int direction;
+    float lifeTimer;
+    float height; // 冲击波最高峰高度
+
+    Hitbox getHitbox() const {
+        // 冲击波碰撞箱：底边贴地，向上突起高度峰值
+        return { x - 0.4f, x + 0.4f, y - height, y };
+    }
+};
 
 struct AttackResult {
     bool pogoSuccess;

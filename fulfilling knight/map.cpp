@@ -85,6 +85,22 @@ bool Map::loadLevel(int levelIndex) {
             if (t.id != 0) bgLayers.push_back({ t, speeds[i - 1] });
         }
     }
+    else if (levelIndex == 3) {
+        // 🌟 专属第三关 Boss 巢穴地表贴图加载
+        texGroundTop = LoadTexture("boss_cave/boss_cave_ground.png");
+        texGroundDeep = LoadTexture("boss_cave/boss_cave_ground.png");
+
+        // 🌟 核心修复：针对 6 动得最慢(远)，0 动得最快(近) 的特殊命名规则，精准指派滚动速度！
+        // 速度数组对应关系：层6, 层5, 层4, 层3, 层2, 层1, 层0
+        float bossSpeeds[7] = { 0.02f, 0.06f, 0.12f, 0.18f, 0.25f, 0.35f, 0.45f };
+
+        // 倒序依次读取 6.png 到 0.png
+        for (int i = 6; i >= 0; i--) {
+            Texture2D t = LoadTexture(("boss_cave/" + std::to_string(i) + ".png").c_str());
+            // 数组索引映射：当 i=6 时取 bossSpeeds[0] (0.02f)，当 i=0 时取 bossSpeeds[6] (0.45f)
+            if (t.id != 0) bgLayers.push_back({ t, bossSpeeds[6 - i] });
+        }
+    }
 
     return true;
 }

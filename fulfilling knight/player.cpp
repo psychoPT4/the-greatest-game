@@ -63,15 +63,8 @@ void Player::setMoveIntent(int dir) {
 }
 
 void Player::processJump(bool jumpPressed, bool jumpHeld, bool downHeld) {
-    if (jumpPressed && (isGrounded || jumpCount < 2)) {
-        if (stamina >= 15.0f) {
-            stamina -= 15.0f;
-            velocityY = jumpForce;
-            jumpCount++;
-            isGrounded = false;
-        }
-    }
     if (jumpPressed) {
+        // 🌟 1. 优先判定下跳穿透平台机制
         if (downHeld && isGrounded) {
             ignorePlatformTimer = 0.2f;
             isGrounded = false;
@@ -79,10 +72,30 @@ void Player::processJump(bool jumpPressed, bool jumpHeld, bool downHeld) {
             return;
         }
 
-        if (isGrounded) { velocityY = jumpForce; isGrounded = false; jumpCount = 1; }
-        else if (jumpCount < 2) { velocityY = jumpForce * 0.85f; jumpCount = 2; combatLog = "二段跳！ "; }
+        // 🌟 2. 正常地面起跳分支
+        if (isGrounded) {
+            if (stamina >= 15.0f) {
+                stamina -= 15.0f;
+                velocityY = jumpForce;
+                isGrounded = false;
+                jumpCount = 1;
+            }
+        }
+        // 🌟 3. 互斥的空中二段跳分支，彻底规避地面按键重复吞噬次数
+        else if (jumpCount < 2) {
+            if (stamina >= 15.0f) {
+                stamina -= 15.0f;
+                velocityY = jumpForce * 0.85f;
+                jumpCount = 2;
+                combatLog = "二段跳！ ";
+            }
+        }
     }
-    if (!jumpHeld && velocityY < 0) velocityY *= 0.5f;
+
+    // 🌟 核心大小跳控制：一旦中途松开按键且在上升，立刻削减势能
+    if (!jumpHeld && velocityY < 0) {
+        velocityY *= 0.5f;
+    }
 }
 
 bool Player::tryDash() {
