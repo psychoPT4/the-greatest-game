@@ -1,7 +1,23 @@
-.vscode/
+# Build output
+x64/
+fulfilli.d636156a/
 *.exe
-*.o
-*.obj. v s / 
+*.pdb
+*.ilk
+*.obj
+*.log
+*.tlog
+*.recipe
+*.lastbuildstate
+
+# Visual Studio
 .vs/
- 
- 
+*.user
+*.suo
+
+# Save files
+save.dat
+
+# OS files
+Thumbs.db
+Desktop.ini
