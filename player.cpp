@@ -15,7 +15,7 @@ Player::Player(int startX, int startY)
     maxRunSpeed(12.0f), runAccel(120.0f), groundFriction(160.0f), airDrag(80.0f),
     gravity(85.0f), jumpForce(-26.0f), maxFallSpeed(30.0f),
     isDashing(false), dashSpeed(40.0f), dashDuration(0.2f), dashTimer(0.0f),
-    dashCooldown(0.6f), dashCooldownTimer(0.0f), ignorePlatformTimer(0.0f), dashDirection(1), isRunningMode(false) {
+    dashCooldown(0.6f), dashCooldownTimer(0.0f), ignorePlatformTimer(0.0f), dashDirection(1), isRunningMode(false), invincible(false) {
     stamina = 100.0f;
     maxStamina = 100.0f;
 }
@@ -28,7 +28,7 @@ void Player::setRealPos(float nx, float ny) {
 }
 
 void Player::takeDamage(int damage, int sourceX, const Map& gameMap) {
-    if (isDashing) return;
+    if (isDashing || invincible) return;
     if (!alive || flickerTimer > 0) return;
 
     if (isDashing) {
@@ -212,7 +212,7 @@ void Player::update(const Map& gameMap, float dt) {
     realY = nextRealY; x = (int)std::round(realX); y = (int)std::round(realY);
 }
 
-AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir) {
+AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir, int& killCount) {
     AttackResult res;
     Hitbox myBox = getHitbox();
     Hitbox strikeBox;
@@ -240,6 +240,7 @@ AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, int
             if (target.takeDamage(baseDamage, x, gameMap)) {
                 res.hitSomething = true;
                 if (attackType == 1) res.pogoSuccess = true;
+                if (!target.isAlive()) killCount++;
                 addMana(11);
                 combatLog = "【命中目标！】 ";
             }
@@ -306,7 +307,7 @@ MagicAction Player::processMagic(bool magicHeld, bool magicReleased, float dt) {
     return action;
 }
 
-void Player::updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt) {
+void Player::updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt, int& killCount) {
     for (auto it = projectiles.begin(); it != projectiles.end(); ) {
         it->x += (it->speed * it->facingDir) * dt;
         it->lifeTimer -= dt;
@@ -315,8 +316,8 @@ void Player::updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, 
         for (auto& target : enemies) {
             if (target.isAlive() && it->getHitbox().intersects(target.getHitbox())) {
                 if (!target.isFlickering()) {
-                    // 🌟 造成真实法术伤害，避免直接访问野指针
                     target.takeDamage(40, (int)it->x, gameMap);
+                    if (!target.isAlive()) killCount++;
                     hitEnemy = true;
                 }
             }

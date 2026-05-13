@@ -454,6 +454,14 @@ int main() {
     float dashTrailTimer = 0.0f;
     float runTrailTimer = 0.0f;
     float playTime = 0.0f;
+    int killCount = 0;
+    bool ghostUnlocked = false;
+    bool isGhosting = false;
+    float ghostTimer = 0.0f;
+    float ghostCooldownTimer = 0.0f;
+    const float GHOST_DURATION = 0.6f;
+    const float GHOST_COOLDOWN = 4.0f;
+    const int GHOST_UNLOCK_KILLS = 24;
     float fadeAlpha = 0.0f;
     bool isFadingOut = true;
     bool isTransitioning = false;
@@ -473,6 +481,17 @@ int main() {
         if (saveMessageTimer > 0.0f) saveMessageTimer -= dt;
         if (saveFlashTimer > 0.0f) saveFlashTimer -= dt;
         if (currentState == PLAYING) playTime += dt;
+
+        if (!ghostUnlocked && killCount >= GHOST_UNLOCK_KILLS) {
+            ghostUnlocked = true;
+            combatLog = "虚化能力解锁！按 Q 进入虚化状态";
+        }
+        if (isGhosting) {
+            ghostTimer -= dt;
+            if (ghostTimer <= 0.0f) { isGhosting = false; ghostTimer = 0.0f; }
+        }
+        player.setInvincible(isGhosting);
+        if (ghostCooldownTimer > 0.0f) ghostCooldownTimer -= dt;
 
         if (isTransitioning) {
             const float FADE_SPEED = 2.8f;
@@ -542,7 +561,7 @@ int main() {
                 }
             }
             if (CheckCollisionPointRec(mousePos, btnNewGame) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                currentLevel = 1; playTime = 0.0f;
+                currentLevel = 1; playTime = 0.0f; killCount = 0; ghostUnlocked = false;
                 currentState = HOW_TO_PLAY; mapLoaded = false;
                 StopMusicStream(bgms[currentBgmIndex]);
                 currentBgmIndex = 0;
@@ -555,7 +574,7 @@ int main() {
                 break;
             }
             if (IsKeyPressed(KEY_ENTER)) {
-                currentLevel = 1; playTime = 0.0f;
+                currentLevel = 1; playTime = 0.0f; killCount = 0; ghostUnlocked = false;
                 currentState = HOW_TO_PLAY; mapLoaded = false;
                 StopMusicStream(bgms[currentBgmIndex]);
                 currentBgmIndex = 0;
@@ -653,10 +672,17 @@ int main() {
                 combatLog = "回复生命！";
             }
 
-            player.updateProjectiles(enemies, gameMap, dt);
+            player.updateProjectiles(enemies, gameMap, dt, killCount);
 
-            if (IsKeyPressed(KEY_L)) {
+            if (!frozen && IsKeyPressed(KEY_L)) {
                 if (player.tryDash()) PlaySound(sfxDash);
+            }
+
+            if (!frozen && IsKeyPressed(KEY_Q) && ghostUnlocked && !isGhosting && ghostCooldownTimer <= 0.0f) {
+                isGhosting = true;
+                ghostTimer = GHOST_DURATION;
+                ghostCooldownTimer = GHOST_COOLDOWN;
+                combatLog = "虚化！ ";
             }
 
             int moveDir = (IsKeyDown(KEY_D) - IsKeyDown(KEY_A));
@@ -719,7 +745,7 @@ int main() {
                 bool isActiveFrame = (attackFrame >= 1 && attackFrame <= 2);
 
                 if (isActiveFrame) {
-                    AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir);
+                    AttackResult result = player.attack(enemies, gameMap, currentAttackType, lockedAttackDir, killCount);
 
                     if (result.hitSomething || result.pogoSuccess) {
                         PlaySound(sfxHit);
@@ -937,7 +963,7 @@ int main() {
         }
         else if (currentState == GAME_OVER) {
             if (IsKeyPressed(KEY_ENTER)) {
-                currentLevel = 1; playTime = 0.0f;
+                currentLevel = 1; playTime = 0.0f; killCount = 0; ghostUnlocked = false;
                 currentState = PLAYING; mapLoaded = false;
                 StopMusicStream(bgms[currentBgmIndex]);
                 currentBgmIndex = 0;
@@ -1323,6 +1349,40 @@ int main() {
                     Color auraColor = (player.getIsFocusing()) ? Color{ 255, 255, 255, 80 } : Color{ 50, 150, 255, 80 };
                     DrawCircle((int)(pRenderX + TILE_SIZE / 2.0f), (int)(pRenderY + TILE_SIZE / 2.0f), TILE_SIZE * 1.2f, auraColor);
                 }
+                else if (isGhosting) {
+                    // Obito-style ghost phasing effect
+                    float ghostRatio = ghostTimer / GHOST_DURATION;
+                    unsigned char baseAlpha = (unsigned char)(120 + 40 * ghostRatio);
+                    Color ghostTint = { 120, 200, 255, baseAlpha };
+
+                    // Phasing offset copies (Kamui displacement)
+                    float phaseOffset = (1.0f - ghostRatio) * 15.0f;
+                    for (int g = 3; g >= 0; g--) {
+                        float gox = pRenderX + phaseOffset * (g - 1.5f) * 0.5f;
+                        unsigned char ga = (unsigned char)(baseAlpha * (0.2f + 0.2f * g));
+                        DrawTexExact(curFrameTex, gox, pRenderY, TILE_SIZE, TILE_SIZE, {120, 200, 255, ga}, pFlipX);
+                    }
+
+                    // Main ghost body
+                    DrawTexExact(curFrameTex, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, ghostTint, pFlipX);
+
+                    // Swirling energy particles (Kamui spiral)
+                    float cx = pRenderX + TILE_SIZE / 2.0f;
+                    float cy = pRenderY + TILE_SIZE / 2.0f;
+                    int particleCount = 18;
+                    for (int i = 0; i < particleCount; i++) {
+                        float angle = GetTime() * 8.0f + i * (PI * 2.0f / particleCount);
+                        float radius = TILE_SIZE * (0.5f + 0.3f * sin(GetTime() * 5.0f + i * 0.6f));
+                        float px = cx + cos(angle) * radius;
+                        float py = cy + sin(angle) * radius * 0.6f;
+                        float pSize = 2.0f + 1.5f * sin(GetTime() * 6.0f + i);
+                        unsigned char pa = (unsigned char)(180 + 75 * sin(GetTime() * 4.0f + i));
+                        DrawCircle((int)px, (int)py, pSize, {100, 180, 255, pa});
+                    }
+
+                    // Inner glow ring
+                    DrawCircleLines((int)cx, (int)cy, TILE_SIZE * 0.8f, {100, 180, 255, (unsigned char)(80 + 60 * ghostRatio)});
+                }
                 else {
                     DrawTexExact(curFrameTex, pRenderX, pRenderY, TILE_SIZE, TILE_SIZE, player.isFlickering() ? RED : WHITE, pFlipX);
                 }
@@ -1491,9 +1551,43 @@ int main() {
             DrawRectangle(uiX, uiY + 42, 120 * staRatio, 8, YELLOW);
             DrawRectangleLines(uiX, uiY + 42, 120, 8, GRAY);
 
-            DrawTextEx(myFont, combatLog.c_str(), { uiX, uiY + 60 }, 20, 1.0f, WHITE);
+            // Kill counter & ghost ability UI
+            float killUiY = uiY + 55;
+            int displayKills = (killCount > GHOST_UNLOCK_KILLS) ? GHOST_UNLOCK_KILLS : killCount;
+            float killRatio = (float)displayKills / GHOST_UNLOCK_KILLS;
+
+            DrawRectangle(uiX, killUiY, 120, 10, { 20, 20, 30, 200 });
+            if (killRatio > 0.0f) {
+                Color killBarColor = ghostUnlocked ? Color{100, 200, 255, 255} : Color{200, 60, 60, 255};
+                DrawRectangle(uiX, killUiY, 120 * killRatio, 10, killBarColor);
+            }
+            DrawRectangleLines(uiX, killUiY, 120, 10, GRAY);
+            DrawTextEx(myFont, TextFormat("Kills: %d/%d", killCount, GHOST_UNLOCK_KILLS),
+                { uiX, killUiY - 2 }, 14, 1.0f, ghostUnlocked ? Color{100, 200, 255, 255} : WHITE);
+
+            // Ghost ability status
+            float ghostUiX = uiX + 130;
+            if (ghostUnlocked) {
+                const char* ghostStatus;
+                Color ghostColor;
+                if (isGhosting) {
+                    ghostStatus = "Q - PHASING!";
+                    ghostColor = Color{100, 200, 255, 255};
+                } else if (ghostCooldownTimer > 0.0f) {
+                    ghostStatus = TextFormat("Q - %.1fs", ghostCooldownTimer);
+                    ghostColor = GRAY;
+                } else {
+                    ghostStatus = "Q - READY";
+                    ghostColor = Color{100, 200, 255, 255};
+                }
+                DrawTextEx(myFont, ghostStatus, { ghostUiX, killUiY - 3 }, 14, 1.0f, ghostColor);
+            } else if (killCount > 0) {
+                DrawTextEx(myFont, "Q - LOCKED", { ghostUiX, killUiY - 3 }, 14, 1.0f, DARKGRAY);
+            }
+
+            DrawTextEx(myFont, combatLog.c_str(), { uiX, uiY + 75 }, 20, 1.0f, WHITE);
             if (saveMessageTimer > 0.0f) {
-                DrawTextEx(myFont, saveMessage.c_str(), { uiX, uiY + 85 }, 22, 1.0f, YELLOW);
+                DrawTextEx(myFont, saveMessage.c_str(), { uiX, uiY + 100 }, 22, 1.0f, YELLOW);
             }
         }
         else if (currentState == SETTINGS) {

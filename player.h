@@ -68,6 +68,7 @@ private:
     float ignorePlatformTimer;
     bool isDashing;
     float dashSpeed, dashDuration, dashTimer, dashCooldown, dashCooldownTimer;
+    bool invincible;
     int dashDirection;
     bool isRunningMode;
 
@@ -106,6 +107,8 @@ public:
     const std::vector<Projectile>& getProjectiles() const { return projectiles; }
     bool getIsFocusing() const { return isFocusing; }
     float getHealFlashTimer() const { return healFlashTimer; }
+    void setInvincible(bool v) { invincible = v; }
+    bool isInvincible() const { return invincible; }
     Hitbox getHitbox() const {
         return { realX + (1.0f - hbWidth) / 2.0f, realX + (1.0f + hbWidth) / 2.0f,
                  realY + 1.0f - hbHeight, realY + 1.0f };
@@ -116,7 +119,7 @@ public:
     void setMoveIntent(int dir);
     void processJump(bool jumpPressed, bool jumpHeld, bool downHeld);
     void update(const Map& gameMap, float dt);
-    AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir);
+    AttackResult attack(std::vector<Enemy>& enemies, const Map& gameMap, int attackType, int lockedDir, int& killCount);
     void setRunningMode(bool run) { isRunningMode = run; }
 
     void addMana(int amount) {
@@ -124,7 +127,7 @@ public:
         if (mana > maxMana) mana = maxMana;
     }
 
-    void updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt);
+    void updateProjectiles(std::vector<Enemy>& enemies, const Map& gameMap, float dt, int& killCount);
     bool tryDash();
     bool consumeMana(int amount) {
         if (mana >= amount) {
