@@ -64,11 +64,12 @@ const int TILE_SIZE = 48;
 // --- Save/Load System ---
 const char* SAVE_FILE = "save.dat";
 const char SAVE_MAGIC[] = "FKGT";
-const int SAVE_VERSION = 1;
+const int SAVE_VERSION = 2;
 
 static bool saveGame(int currentLevel, const Player& player, const vector<Enemy>& enemies,
-              float _safeX, float _safeY, float bgmVol, float sfxVol,
-              const string& cLog) {
+    float _safeX, float _safeY, float bgmVol, float sfxVol,
+    const string& cLog, int _killCount, bool _ghostUnlocked,
+    float _ghostCdTimer, float _playTime) {
     FILE* f = fopen(SAVE_FILE, "wb");
     if (!f) { saveMessage = "Save failed!"; saveMessageTimer = 2.0f; return false; }
 
@@ -76,6 +77,7 @@ static bool saveGame(int currentLevel, const Player& player, const vector<Enemy>
     fwrite(&SAVE_VERSION, sizeof(int), 1, f);
     fwrite(&currentLevel, sizeof(int), 1, f);
 
+    // 基础实体状态
     float px = player.getRealX(), py = player.getRealY();
     int hp = player.getHp(), maxHp = player.getMaxHp();
     int mana = player.getMana(), maxMana = player.getMaxMana();
@@ -95,67 +97,48 @@ static bool saveGame(int currentLevel, const Player& player, const vector<Enemy>
     bool alive = player.isAlive();
     float vx = player.getVelocityX(), vy = player.getVelocityY();
 
-    fwrite(&px, sizeof(float), 1, f);
-    fwrite(&py, sizeof(float), 1, f);
-    fwrite(&hp, sizeof(int), 1, f);
-    fwrite(&maxHp, sizeof(int), 1, f);
-    fwrite(&mana, sizeof(int), 1, f);
-    fwrite(&maxMana, sizeof(int), 1, f);
-    fwrite(&stamina, sizeof(float), 1, f);
-    fwrite(&maxStamina, sizeof(float), 1, f);
-    fwrite(&facingDir, sizeof(int), 1, f);
-    fwrite(&jumpCount, sizeof(int), 1, f);
-    fwrite(&isGrounded, sizeof(bool), 1, f);
-    fwrite(&dashCdTimer, sizeof(float), 1, f);
-    fwrite(&flickerTimer, sizeof(int), 1, f);
-    fwrite(&isDashing, sizeof(bool), 1, f);
-    fwrite(&dashTimer, sizeof(float), 1, f);
-    fwrite(&ignorePlatTimer, sizeof(float), 1, f);
-    fwrite(&isRunningMode, sizeof(bool), 1, f);
-    fwrite(&focusTimer, sizeof(float), 1, f);
-    fwrite(&isFocusing, sizeof(bool), 1, f);
-    fwrite(&healFlashTimer, sizeof(float), 1, f);
-    fwrite(&alive, sizeof(bool), 1, f);
-    fwrite(&vx, sizeof(float), 1, f);
+    fwrite(&px, sizeof(float), 1, f); fwrite(&py, sizeof(float), 1, f);
+    fwrite(&hp, sizeof(int), 1, f); fwrite(&maxHp, sizeof(int), 1, f);
+    fwrite(&mana, sizeof(int), 1, f); fwrite(&maxMana, sizeof(int), 1, f);
+    fwrite(&stamina, sizeof(float), 1, f); fwrite(&maxStamina, sizeof(float), 1, f);
+    fwrite(&facingDir, sizeof(int), 1, f); fwrite(&jumpCount, sizeof(int), 1, f);
+    fwrite(&isGrounded, sizeof(bool), 1, f); fwrite(&dashCdTimer, sizeof(float), 1, f);
+    fwrite(&flickerTimer, sizeof(int), 1, f); fwrite(&isDashing, sizeof(bool), 1, f);
+    fwrite(&dashTimer, sizeof(float), 1, f); fwrite(&ignorePlatTimer, sizeof(float), 1, f);
+    fwrite(&isRunningMode, sizeof(bool), 1, f); fwrite(&focusTimer, sizeof(float), 1, f);
+    fwrite(&isFocusing, sizeof(bool), 1, f); fwrite(&healFlashTimer, sizeof(float), 1, f);
+    fwrite(&alive, sizeof(bool), 1, f); fwrite(&vx, sizeof(float), 1, f);
     fwrite(&vy, sizeof(float), 1, f);
 
-    fwrite(&_safeX, sizeof(float), 1, f);
-    fwrite(&_safeY, sizeof(float), 1, f);
-    fwrite(&bgmVol, sizeof(float), 1, f);
-    fwrite(&sfxVol, sizeof(float), 1, f);
+    fwrite(&_safeX, sizeof(float), 1, f); fwrite(&_safeY, sizeof(float), 1, f);
+    fwrite(&bgmVol, sizeof(float), 1, f); fwrite(&sfxVol, sizeof(float), 1, f);
 
+    // 🌟 新增：持久化进阶游戏机制数据
+    fwrite(&_killCount, sizeof(int), 1, f);
+    fwrite(&_ghostUnlocked, sizeof(bool), 1, f);
+    fwrite(&_ghostCdTimer, sizeof(float), 1, f);
+    fwrite(&_playTime, sizeof(float), 1, f);
+
+    // 怪物序列化
     int enemyCount = (int)enemies.size();
     fwrite(&enemyCount, sizeof(int), 1, f);
     for (const auto& e : enemies) {
-        int eType = e.getEnemyType();
-        float erx = e.getRealX(), ery = e.getRealY();
-        int eHp = e.getHp(), eMaxHp = e.getMaxHp();
-        bool eAlive = e.isAlive();
+        int eType = e.getEnemyType(); float erx = e.getRealX(), ery = e.getRealY();
+        int eHp = e.getHp(), eMaxHp = e.getMaxHp(); bool eAlive = e.isAlive();
         int eFlicker = e.getFlickerTimer(), eMoveDir = e.getMoveDirection();
         int eAtkCd = e.getAttackCooldown(), eFrame = e.getCurrentFrame();
-        float eAnimT = e.getAnimTimer();
-        int eAiState = e.getAiState();
-        float eStateT = e.getStateTimer();
-        int eBossState = e.getBossState();
-        bool eEnraged = e.getIsEnraged();
-        int eMaceDir = e.getMaceSwingDir();
+        float eAnimT = e.getAnimTimer(); int eAiState = e.getAiState();
+        float eStateT = e.getStateTimer(); int eBossState = e.getBossState();
+        bool eEnraged = e.getIsEnraged(); int eMaceDir = e.getMaceSwingDir();
 
-        fwrite(&eType, sizeof(int), 1, f);
-        fwrite(&erx, sizeof(float), 1, f);
-        fwrite(&ery, sizeof(float), 1, f);
-        fwrite(&eHp, sizeof(int), 1, f);
-        fwrite(&eMaxHp, sizeof(int), 1, f);
-        fwrite(&eAlive, sizeof(bool), 1, f);
-        fwrite(&eFlicker, sizeof(int), 1, f);
-        fwrite(&eMoveDir, sizeof(int), 1, f);
-        fwrite(&eAtkCd, sizeof(int), 1, f);
-        fwrite(&eFrame, sizeof(int), 1, f);
-        fwrite(&eAnimT, sizeof(float), 1, f);
-        fwrite(&eAiState, sizeof(int), 1, f);
-        fwrite(&eStateT, sizeof(float), 1, f);
-        fwrite(&eBossState, sizeof(int), 1, f);
-        fwrite(&eEnraged, sizeof(bool), 1, f);
-        fwrite(&eMaceDir, sizeof(int), 1, f);
+        fwrite(&eType, sizeof(int), 1, f); fwrite(&erx, sizeof(float), 1, f);
+        fwrite(&ery, sizeof(float), 1, f); fwrite(&eHp, sizeof(int), 1, f);
+        fwrite(&eMaxHp, sizeof(int), 1, f); fwrite(&eAlive, sizeof(bool), 1, f);
+        fwrite(&eFlicker, sizeof(int), 1, f); fwrite(&eMoveDir, sizeof(int), 1, f);
+        fwrite(&eAtkCd, sizeof(int), 1, f); fwrite(&eFrame, sizeof(int), 1, f);
+        fwrite(&eAnimT, sizeof(float), 1, f); fwrite(&eAiState, sizeof(int), 1, f);
+        fwrite(&eStateT, sizeof(float), 1, f); fwrite(&eBossState, sizeof(int), 1, f);
+        fwrite(&eEnraged, sizeof(bool), 1, f); fwrite(&eMaceDir, sizeof(int), 1, f);
     }
 
     int logLen = (int)cLog.size();
@@ -164,34 +147,26 @@ static bool saveGame(int currentLevel, const Player& player, const vector<Enemy>
 
     fclose(f);
     saveMessage = "Game Saved!";
-    saveMessageTimer = 2.0f;
-    saveFlashTimer = 0.4f;
+    saveMessageTimer = 2.0f; saveFlashTimer = 0.4f;
     return true;
 }
 
 static bool loadGame(int& currentLevel, Player& player, vector<Enemy>& enemies,
-              Map& gameMap, float& _safeX, float& _safeY,
-              float& bgmVol, float& sfxVol, string& cLog, bool& mapLoaded) {
+    Map& gameMap, float& _safeX, float& _safeY,
+    float& bgmVol, float& sfxVol, string& cLog, bool& mapLoaded,
+    int& _killCount, bool& _ghostUnlocked, float& _ghostCdTimer, float& _playTime) {
     FILE* f = fopen(SAVE_FILE, "rb");
     if (!f) { saveMessage = "No save file found!"; saveMessageTimer = 2.0f; return false; }
 
     char magic[4]; int version;
-    fread(magic, 4, 1, f);
-    fread(&version, sizeof(int), 1, f);
+    fread(magic, 4, 1, f); fread(&version, sizeof(int), 1, f);
     if (memcmp(magic, SAVE_MAGIC, 4) != 0 || version != SAVE_VERSION) {
-        fclose(f);
-        saveMessage = "Invalid save file!";
-        saveMessageTimer = 2.0f;
-        return false;
+        fclose(f); saveMessage = "Invalid save file!"; saveMessageTimer = 2.0f; return false;
     }
 
     fread(&currentLevel, sizeof(int), 1, f);
-
     if (!gameMap.loadLevel(currentLevel)) {
-        fclose(f);
-        saveMessage = "Failed to load level!";
-        saveMessageTimer = 2.0f;
-        return false;
+        fclose(f); saveMessage = "Failed to load level!"; saveMessageTimer = 2.0f; return false;
     }
 
     float px, py, stamina, maxStamina, dashCdTimer, dashTimer, ignorePlatTimer;
@@ -199,85 +174,63 @@ static bool loadGame(int& currentLevel, Player& player, vector<Enemy>& enemies,
     int hp, maxHp, mana, maxMana, facingDir, jumpCount, flickerTimer;
     bool isGrounded, isDashing, isRunningMode, isFocusing, alive;
 
-    fread(&px, sizeof(float), 1, f);
-    fread(&py, sizeof(float), 1, f);
-    fread(&hp, sizeof(int), 1, f);
-    fread(&maxHp, sizeof(int), 1, f);
-    fread(&mana, sizeof(int), 1, f);
-    fread(&maxMana, sizeof(int), 1, f);
-    fread(&stamina, sizeof(float), 1, f);
-    fread(&maxStamina, sizeof(float), 1, f);
-    fread(&facingDir, sizeof(int), 1, f);
-    fread(&jumpCount, sizeof(int), 1, f);
-    fread(&isGrounded, sizeof(bool), 1, f);
-    fread(&dashCdTimer, sizeof(float), 1, f);
-    fread(&flickerTimer, sizeof(int), 1, f);
-    fread(&isDashing, sizeof(bool), 1, f);
-    fread(&dashTimer, sizeof(float), 1, f);
-    fread(&ignorePlatTimer, sizeof(float), 1, f);
-    fread(&isRunningMode, sizeof(bool), 1, f);
-    fread(&focusTimer, sizeof(float), 1, f);
-    fread(&isFocusing, sizeof(bool), 1, f);
-    fread(&healFlashTimer, sizeof(float), 1, f);
-    fread(&alive, sizeof(bool), 1, f);
-    fread(&vx, sizeof(float), 1, f);
+    fread(&px, sizeof(float), 1, f); fread(&py, sizeof(float), 1, f);
+    fread(&hp, sizeof(int), 1, f); fread(&maxHp, sizeof(int), 1, f);
+    fread(&mana, sizeof(int), 1, f); fread(&maxMana, sizeof(int), 1, f);
+    fread(&stamina, sizeof(float), 1, f); fread(&maxStamina, sizeof(float), 1, f);
+    fread(&facingDir, sizeof(int), 1, f); fread(&jumpCount, sizeof(int), 1, f);
+    fread(&isGrounded, sizeof(bool), 1, f); fread(&dashCdTimer, sizeof(float), 1, f);
+    fread(&flickerTimer, sizeof(int), 1, f); fread(&isDashing, sizeof(bool), 1, f);
+    fread(&dashTimer, sizeof(float), 1, f); fread(&ignorePlatTimer, sizeof(float), 1, f);
+    fread(&isRunningMode, sizeof(bool), 1, f); fread(&focusTimer, sizeof(float), 1, f);
+    fread(&isFocusing, sizeof(bool), 1, f); fread(&healFlashTimer, sizeof(float), 1, f);
+    fread(&alive, sizeof(bool), 1, f); fread(&vx, sizeof(float), 1, f);
     fread(&vy, sizeof(float), 1, f);
 
     player.restoreState(px, py, hp, maxHp, mana, maxMana, stamina, maxStamina,
-                        facingDir, jumpCount, isGrounded, dashCdTimer, flickerTimer,
-                        isDashing, dashTimer, ignorePlatTimer, isRunningMode,
-                        focusTimer, isFocusing, healFlashTimer, alive, vx, vy);
+        facingDir, jumpCount, isGrounded, dashCdTimer, flickerTimer,
+        isDashing, dashTimer, ignorePlatTimer, isRunningMode,
+        focusTimer, isFocusing, healFlashTimer, alive, vx, vy);
 
-    fread(&_safeX, sizeof(float), 1, f);
-    fread(&_safeY, sizeof(float), 1, f);
-    fread(&bgmVol, sizeof(float), 1, f);
-    fread(&sfxVol, sizeof(float), 1, f);
+    fread(&_safeX, sizeof(float), 1, f); fread(&_safeY, sizeof(float), 1, f);
+    fread(&bgmVol, sizeof(float), 1, f); fread(&sfxVol, sizeof(float), 1, f);
 
-    int enemyCount;
-    fread(&enemyCount, sizeof(int), 1, f);
+    // 🌟 新增：安全还原进阶机制数据
+    fread(&_killCount, sizeof(int), 1, f);
+    fread(&_ghostUnlocked, sizeof(bool), 1, f);
+    fread(&_ghostCdTimer, sizeof(float), 1, f);
+    fread(&_playTime, sizeof(float), 1, f);
+
+    int enemyCount; fread(&enemyCount, sizeof(int), 1, f);
     enemies.clear();
     for (int i = 0; i < enemyCount; i++) {
         int eType, eHp, eMaxHp, eFlicker, eMoveDir, eAtkCd, eFrame;
-        int eAiState, eBossState, eMaceDir;
-        float erx, ery, eAnimT, eStateT;
+        int eAiState, eBossState, eMaceDir; float erx, ery, eAnimT, eStateT;
         bool eAlive, eEnraged;
 
-        fread(&eType, sizeof(int), 1, f);
-        fread(&erx, sizeof(float), 1, f);
-        fread(&ery, sizeof(float), 1, f);
-        fread(&eHp, sizeof(int), 1, f);
-        fread(&eMaxHp, sizeof(int), 1, f);
-        fread(&eAlive, sizeof(bool), 1, f);
-        fread(&eFlicker, sizeof(int), 1, f);
-        fread(&eMoveDir, sizeof(int), 1, f);
-        fread(&eAtkCd, sizeof(int), 1, f);
-        fread(&eFrame, sizeof(int), 1, f);
-        fread(&eAnimT, sizeof(float), 1, f);
-        fread(&eAiState, sizeof(int), 1, f);
-        fread(&eStateT, sizeof(float), 1, f);
-        fread(&eBossState, sizeof(int), 1, f);
-        fread(&eEnraged, sizeof(bool), 1, f);
-        fread(&eMaceDir, sizeof(int), 1, f);
+        fread(&eType, sizeof(int), 1, f); fread(&erx, sizeof(float), 1, f);
+        fread(&ery, sizeof(float), 1, f); fread(&eHp, sizeof(int), 1, f);
+        fread(&eMaxHp, sizeof(int), 1, f); fread(&eAlive, sizeof(bool), 1, f);
+        fread(&eFlicker, sizeof(int), 1, f); fread(&eMoveDir, sizeof(int), 1, f);
+        fread(&eAtkCd, sizeof(int), 1, f); fread(&eFrame, sizeof(int), 1, f);
+        fread(&eAnimT, sizeof(float), 1, f); fread(&eAiState, sizeof(int), 1, f);
+        fread(&eStateT, sizeof(float), 1, f); fread(&eBossState, sizeof(int), 1, f);
+        fread(&eEnraged, sizeof(bool), 1, f); fread(&eMaceDir, sizeof(int), 1, f);
 
         enemies.emplace_back(0, 0, eType);
         enemies.back().restoreState(erx, ery, eHp, eMaxHp, eAlive,
-                                    eFlicker, eMoveDir, eAtkCd, eFrame, eAnimT,
-                                    eAiState, eStateT, eBossState, eEnraged, eMaceDir);
+            eFlicker, eMoveDir, eAtkCd, eFrame, eAnimT,
+            eAiState, eStateT, eBossState, eEnraged, eMaceDir);
     }
 
-    int logLen;
-    fread(&logLen, sizeof(int), 1, f);
+    int logLen; fread(&logLen, sizeof(int), 1, f);
     if (logLen > 0 && logLen < 1000) {
-        vector<char> buf(logLen + 1);
-        fread(buf.data(), 1, logLen, f);
-        buf[logLen] = '\0';
-        cLog = buf.data();
+        vector<char> buf(logLen + 1); fread(buf.data(), 1, logLen, f);
+        buf[logLen] = '\0'; cLog = buf.data();
     }
 
-    fclose(f);
-    mapLoaded = true;
-    saveMessage = "Game Loaded!";
-    saveMessageTimer = 2.0f;
+    fclose(f); mapLoaded = true;
+    saveMessage = "Game Loaded!"; saveMessageTimer = 2.0f;
     return true;
 }
 
@@ -538,7 +491,7 @@ int main() {
 
             if (saveFileExists && CheckCollisionPointRec(mousePos, btnLoadGame) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
                 StopMusicStream(bgms[currentBgmIndex]);
-                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded);
+                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded, killCount, ghostUnlocked, ghostCooldownTimer, playTime);
                 if (loaded) {
                     for (auto& m : bgms) SetMusicVolume(m, bgmVolume * 0.8f);
                     SetSoundVolume(sfxSwing, sfxVolume); SetSoundVolume(sfxHit, sfxVolume);
@@ -594,12 +547,12 @@ int main() {
             if (!frozen && IsKeyPressed(KEY_ESCAPE)) {
                 currentState = PAUSED;
             }
-            if (!frozen && IsKeyPressed(KEY_F5)) {
-                saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog);
+            if (saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog, killCount, ghostUnlocked, ghostCooldownTimer, playTime)) {
+                saveFileExists = true;
             }
             if (!frozen && IsKeyPressed(KEY_F9)) {
                 StopMusicStream(bgms[currentBgmIndex]);
-                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded);
+                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded, killCount, ghostUnlocked, ghostCooldownTimer, playTime);
                 if (loaded) {
                     for (auto& m : bgms) SetMusicVolume(m, bgmVolume * 0.8f);
                     SetSoundVolume(sfxSwing, sfxVolume); SetSoundVolume(sfxHit, sfxVolume);
@@ -885,11 +838,12 @@ int main() {
                 currentState = PLAYING;
             }
             if (IsKeyPressed(KEY_F5)) {
-                saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog);
+                saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog, killCount, ghostUnlocked, ghostCooldownTimer, playTime)
+                    ;
             }
             if (IsKeyPressed(KEY_F9)) {
                 StopMusicStream(bgms[currentBgmIndex]);
-                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded);
+                bool loaded = loadGame(currentLevel, player, enemies, gameMap, safeX, safeY, bgmVolume, sfxVolume, combatLog, mapLoaded, killCount, ghostUnlocked, ghostCooldownTimer, playTime);
                 if (loaded) {
                     for (auto& m : bgms) SetMusicVolume(m, bgmVolume * 0.8f);
                     SetSoundVolume(sfxSwing, sfxVolume); SetSoundVolume(sfxHit, sfxVolume);

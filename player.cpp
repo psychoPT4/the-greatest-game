@@ -242,7 +242,9 @@ AttackResult Player::attack(std::vector<Enemy>& enemies, const Map& gameMap, int
                 if (attackType == 1) res.pogoSuccess = true;
                 if (!target.isAlive()) killCount++;
                 addMana(11);
-                combatLog = "【命中目标！】 ";
+                if (target.isAlive()) {
+                    combatLog = "【命中目标！】 ";
+                }
             }
         }
     }
