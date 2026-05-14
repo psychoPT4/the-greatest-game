@@ -547,8 +547,10 @@ int main() {
             if (!frozen && IsKeyPressed(KEY_ESCAPE)) {
                 currentState = PAUSED;
             }
-            if (saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog, killCount, ghostUnlocked, ghostCooldownTimer, playTime)) {
-                saveFileExists = true;
+            if (!frozen && IsKeyPressed(KEY_F5)) {
+                if (saveGame(currentLevel, player, enemies, safeX, safeY, bgmVolume, sfxVolume, combatLog, killCount, ghostUnlocked, ghostCooldownTimer, playTime)) {
+                    saveFileExists = true;
+                }
             }
             if (!frozen && IsKeyPressed(KEY_F9)) {
                 StopMusicStream(bgms[currentBgmIndex]);
